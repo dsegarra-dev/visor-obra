@@ -142,6 +142,16 @@ dialog h3{margin:0 0 12px;font-size:16px;font-weight:600}
 .dlist li:hover{color:var(--accent)}
 .dlist .m{color:var(--muted)}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--panel);padding:8px 14px;border-radius:8px;font-size:13px;z-index:30;max-width:min(560px,92vw)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{border:0;border-radius:0;padding:5px 12px;background:var(--panel)}
+.seg button + button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.pane-bar label.ctl{font-size:12.5px;white-space:nowrap}
+.body.mode-sheet{grid-template-columns:minmax(0,1fr) 300px}
+.body.mode-model{grid-template-columns:minmax(0,1fr) 300px}
+.body.mode-sheet .pane-model,.body.mode-model .pane-sheet{display:none}
+@media (max-width:1180px){ .body.mode-sheet,.body.mode-model{grid-template-columns:minmax(0,1fr)} }
+@media (max-width:760px){ .body.mode-sheet .pane-sheet,.body.mode-model .pane-model{height:80vh} }
 .login{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:24px}
 .login-card{max-width:420px;width:100%;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:28px 28px 22px}
 .login-card h2{margin:0 0 8px;font-size:18px}
@@ -172,10 +182,11 @@ dialog h3{margin:0 0 12px;font-size:16px;font-weight:600}
     <h1>Visor de obra</h1>
     <span class="draft">[BORRADOR IA — EN REVISIÓN]</span>
     <span class="spacer"></span>
-    <label class="ctl" title="Debe coincidir con el sistema en que se exportó el IFC">IFC en
-      <select id="coordBase"><option value="internal">coordenadas internas</option><option value="shared">coordenadas compartidas</option></select>
-    </label>
-    <label class="ctl"><input type="checkbox" id="clipOn"> Cortar el 3D como la vista del plano</label>
+    <div class="seg" role="group" aria-label="Vista">
+      <button data-mode="split" aria-pressed="true" title="Plano y modelo (tecla 1)">Dividida</button>
+      <button data-mode="sheet" aria-pressed="false" title="Solo el plano (tecla 2)">Plano</button>
+      <button data-mode="model" aria-pressed="false" title="Solo el modelo (tecla 3)">Modelo 3D</button>
+    </div>
     <label class="ctl" id="projWrap" hidden>Proyecto <select id="projSel" aria-label="Proyecto"></select></label>
     <span class="role" id="roleBadge" hidden></span>
     <span class="user" id="userChip" hidden></span>
@@ -187,7 +198,7 @@ dialog h3{margin:0 0 12px;font-size:16px;font-weight:600}
   </header>
 
   <div class="body">
-    <section class="pane" aria-label="Planos">
+    <section class="pane pane-sheet" aria-label="Planos">
       <div class="pane-bar">
         <button id="drawerBtn" aria-pressed="true" aria-controls="drawer">Planos</button>
         <button id="prevSheet" aria-label="Lámina anterior" title="Lámina anterior (Re Pág)">‹</button>
@@ -217,9 +228,10 @@ dialog h3{margin:0 0 12px;font-size:16px;font-weight:600}
       </div>
     </section>
 
-    <section class="pane" aria-label="Modelo 3D">
+    <section class="pane pane-model" aria-label="Modelo 3D">
       <div class="pane-bar">
         <span class="t">Modelo 3D</span>
+        <label class="ctl" title="Al hacer clic en el plano, corta el 3D a la altura del plano de corte o por el plano de la sección"><input type="checkbox" id="clipOn"> Cortar como el plano</label>
         <button id="secBtn" aria-pressed="false" aria-controls="secPanel">Sección</button>
         <button id="visBtn" aria-pressed="false" aria-controls="visPanel">Visibilidad</button>
         <button id="shotBtn" title="Crea una incidencia con la vista 3D actual">Incidencia</button>
@@ -240,6 +252,9 @@ dialog h3{margin:0 0 12px;font-size:16px;font-weight:600}
           <div class="rng one"><span>Desplazar</span><input type="range" id="faceOff" min="-1000" max="1000" value="0" aria-label="Desplazar el plano de corte" disabled></div>
           <p class="hint" id="faceInfo">Pulsa “Elegir cara” y haz clic en una cara del modelo.</p>
           <div class="btns"><button id="secClear">Quitar cortes</button></div>
+          <h4>Coordenadas del IFC</h4>
+          <select id="coordBase" aria-label="Sistema de coordenadas del IFC" style="width:100%"><option value="internal">Internas de Revit</option><option value="shared">Compartidas</option></select>
+          <p class="hint">Debe coincidir con el sistema con que se exportó el IFC (el script usa internas).</p>
         </div>
         <div class="tool-panel" id="visPanel" hidden>
           <div class="btns">
@@ -1743,7 +1758,7 @@ function downloadRemote(f, onProgress){
   if (inflight.has(key)) return inflight.get(key).then(function(b){ return b.slice(0); });
   var pr = FileCache.get(key).then(function(hit){
     if (hit){ if (onProgress) onProgress(1); return hit; }
-    var gz = !/\.pdf$/i.test(f.name);
+    var gz = !/\.(pdf|crgeo)$/i.test(f.name);
     return api("chunk", {project:S.project, id:f.id, offset:0, gz:gz}).then(function(first){
       var size = first.size, out = new Uint8Array(size), got = 0;
       var place = function(c){
@@ -1824,12 +1839,13 @@ function openProject(code){
     Issues = d.issues.filter(function(i){ return !i.deleted; });
     Sync.since = d.issues.reduce(function(m, i){ return i.updated_at > m ? i.updated_at : m; }, "");
     renderIssueList();
-    var indices = [], locs = [], modelos = [], ifcs = [];
+    var indices = [], locs = [], modelos = [], ifcs = [], geos = [];
     d.files.forEach(function(f){
       var n = f.name.toLowerCase();
       if (/_indice\.json$/.test(n)) indices.push(f); else if (/_loc\.json$/.test(n)) locs.push(f);
       else if (/_modelo\.json$/.test(n)) modelos.push(f);
       else if (n.endsWith(".pdf")) Lib.addPdf(new RemoteFile(f)); else if (n.endsWith(".ifc")) ifcs.push(f);
+      else if (n.endsWith(".crgeo")) geos.push(f);
     });
     var covered = new Set(), loading = true;
     var refresh = debounce(function(){
@@ -1857,7 +1873,11 @@ function openProject(code){
     function startIfc(){
       if (ifcStarted || S.project !== code) return; ifcStarted = true;
       var ifc = pickIfc(ifcs.map(function(f){ return new RemoteFile(f); }));
-      if (ifc) loadIfc(ifc);
+      if (ifc){
+        var prefix = (ifc.id + "_" + String(ifc.modified).replace(/\D/g, "") + "_").toLowerCase();
+        var g = geos.filter(function(f){ return f.name.toLowerCase().indexOf(prefix) === 0; })[0];
+        loadIfc(ifc, g ? new RemoteFile(g) : null);
+      }
       else $("ifcEmptyTxt").textContent = "Este proyecto aún no tiene modelo publicado. Expórtalo desde Revit con «Exportar lámina obra» a la carpeta del visor.";
     }
     if (!modelos.length) startIfc();
@@ -2153,6 +2173,20 @@ function prefetchAround(e){
   });
 }
 
+// ================================================================ modo de vista: dividida / plano / modelo
+function setMode(mode){
+  if (["split", "sheet", "model"].indexOf(mode) < 0) mode = "split";
+  var body = document.querySelector(".body");
+  body.classList.remove("mode-split", "mode-sheet", "mode-model"); body.classList.add("mode-" + mode);
+  document.querySelectorAll(".seg button").forEach(function(b){ b.setAttribute("aria-pressed", b.dataset.mode === mode ? "true" : "false"); });
+  try { localStorage.setItem("cr_visorobra_vista", mode); } catch(e){}
+  S.mode = mode;
+  setTimeout(function(){ resize(); if (S.page) refit(); requestRender(); }, 0);
+}
+document.querySelectorAll(".seg button").forEach(function(b){ b.addEventListener("click", function(){ setMode(b.dataset.mode); }); });
+function needSheet(){ if (S.mode === "model") setMode("split"); }
+function needModel(){ if (S.mode === "sheet") setMode("split"); }
+
 // ================================================================ dibujo del PDF
 var renderTask = null, MAX_PX = 32e6;
 function refit(){
@@ -2314,7 +2348,7 @@ var marker = new THREE.Group(); marker.visible = false; scene.add(marker);
 var highlightMat = new THREE.MeshLambertMaterial({color:0x1F5FAD, emissive:0x0a2a55, side:THREE.DoubleSide, polygonOffset:true, polygonOffsetFactor:-2, polygonOffsetUnits:-2});
 var pending = false;
 function requestRender(){ if (!pending){ pending = true; requestAnimationFrame(frame); } }
-function frame(){ pending = false; var moving = controls.update(); renderer.render(scene, camera); if (moving) requestRender(); }
+function frame(){ pending = false; if (!host.clientWidth) return; var moving = controls.update(); renderer.render(scene, camera); if (moving) requestRender(); }
 controls.addEventListener("change", requestRender);
 function resize(){ var w = host.clientWidth, h = host.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); requestRender(); }
 new ResizeObserver(resize).observe(host); resize();
@@ -2371,11 +2405,15 @@ function progress(m){
   $("barFill").style.width = Math.round(f * 100) + "%";
   $("progress").textContent = m.phase === "geometry" ? "Leyendo geometría… " + m.i + " / " + m.total : "Leyendo propiedades y plantas…";
 }
-var t0Load = 0, ModelReady = null;
+var t0Load = 0, ModelReady = null, PropsFile = null;
 function secs(ms){ return (ms / 1000).toLocaleString("es-ES", {maximumFractionDigits:1}) + " s"; }
+function mbs(b){ return (b / 1048576).toLocaleString("es-ES", {maximumFractionDigits:b < 1048576 * 10 ? 1 : 0}) + " MB"; }
 function geoKey(file){
   var id = S.online ? S.project + "|" + file.id + "|" + file.modified : file.name + "|" + file.size + "|" + file.lastModified;
   return "geo|" + id + "|v1";
+}
+function geoBytes(m){
+  return m.parts.reduce(function(s, q){ return s + q.pos.byteLength + q.nor.byteLength + q.idx.byteLength + q.rE.byteLength * 3; }, 0) + m.bbox.byteLength + m.ids.byteLength;
 }
 function finishModel(m, file, timing){
   buildModel(m); S.ifcName = file.name;
@@ -2383,35 +2421,116 @@ function finishModel(m, file, timing){
   $("progress").textContent = Model.n.toLocaleString("es-ES") + " elementos · " + Model.parts.length + " materiales · " + timing;
   indexModel(); fitAll(); runExportCheck(); renderPkg();
 }
-function loadIfc(file){
-  t0Load = performance.now(); ModelReady = null;
+// las propiedades necesitan el IFC abierto en el lector: solo se descarga si alguien selecciona un elemento
+function ensureProps(){
+  if (ModelReady) return ModelReady;
+  if (!PropsFile) return Promise.reject(new Error("sin_modelo"));
+  var f = PropsFile;
+  ModelReady = f.arrayBuffer(function(x){ var eb = $("elemBox"); if (eb && x < 1) eb.innerHTML = '<p class="hint">Cargando las propiedades del modelo (solo la primera vez)… ' + Math.round(x * 100) + ' %</p>'; })
+    .then(function(buf){ return ifcCall({cmd:"open", buffer:buf}, [buf]); });
+  ModelReady.catch(function(){ ModelReady = null; });
+  return ModelReady;
+}
+
+// ---- formato .crgeo: «CRGEO1» + cabecera JSON + búferes alineados a 8 bytes, todo en gzip
+var GEO_MAGIC = "CRGEO1\0\0";
+function align8(n){ return (n + 7) & ~7; }
+function toInt8(a){
+  if (a instanceof Int8Array) return a;
+  var o = new Int8Array(a.length);
+  for (var i = 0; i < a.length; i++) o[i] = Math.max(-127, Math.min(127, Math.round(a[i] * 127)));
+  return o;
+}
+function gzipBlob(blob){ return new Response(blob.stream().pipeThrough(new CompressionStream("gzip"))).blob(); }
+function encodeGeo(m, file){
+  var head = {v:1, src:{id:file.id, modified:file.modified, name:file.name}, offset:m.offset, n:m.ids.length,
+              types:m.types, tags:m.tags, storeys:m.storeys, storeyOrder:m.storeyOrder, parts:[]};
+  var arrays = [m.ids, m.bbox];
+  m.parts.forEach(function(p){
+    head.parts.push({color:p.color, nv:p.pos.length, ni:p.idx.length, nr:p.rE.length});
+    arrays.push(p.pos, toInt8(p.nor), p.idx, p.rE, p.rS, p.rC);
+  });
+  var hj = new TextEncoder().encode(JSON.stringify(head)), chunks = [], pos = 0;
+  function push(u8){ chunks.push(u8); pos += u8.byteLength; var pad = align8(pos) - pos; if (pad){ chunks.push(new Uint8Array(pad)); pos += pad; } }
+  var pre = new Uint8Array(16); for (var i = 0; i < 8; i++) pre[i] = GEO_MAGIC.charCodeAt(i);
+  new DataView(pre.buffer).setUint32(8, hj.byteLength, true);
+  push(pre); push(hj);
+  arrays.forEach(function(a){ push(new Uint8Array(a.buffer, a.byteOffset, a.byteLength)); });
+  return gzipBlob(new Blob(chunks));
+}
+function decodeGeo(ab){
+  return gunzip(ab).then(function(buf){
+    var u8 = new Uint8Array(buf, 0, 8), magic = String.fromCharCode.apply(null, u8);
+    if (magic !== GEO_MAGIC) throw new Error("versión procesada no válida");
+    var hl = new DataView(buf).getUint32(8, true);
+    var h = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 16, hl))), off = align8(16 + hl);
+    function take(Type, n){ var a = new Type(buf, off, n); off = align8(off + n * Type.BYTES_PER_ELEMENT); return a; }
+    var ids = take(Uint32Array, h.n), bbox = take(Float64Array, h.n * 6);
+    var parts = h.parts.map(function(q){
+      return {color:q.color, pos:take(Float32Array, q.nv), nor:take(Int8Array, q.nv), idx:take(Uint32Array, q.ni),
+              rE:take(Uint32Array, q.nr), rS:take(Uint32Array, q.nr), rC:take(Uint32Array, q.nr)};
+    });
+    return {offset:h.offset, ids:ids, bbox:bbox, parts:parts, types:h.types, tags:h.tags, storeys:h.storeys, storeyOrder:h.storeyOrder, src:h.src};
+  });
+}
+function blobToB64(blob){
+  return new Promise(function(res, rej){ var r = new FileReader(); r.onload = function(){ res(String(r.result).split(",")[1] || ""); }; r.onerror = function(){ rej(r.error); }; r.readAsDataURL(blob); });
+}
+function uploadGeo(file, m){
+  var code = S.project, note = function(txt){ if (S.project === code && Model) $("progress").textContent = S.modelTiming + (txt ? " · " + txt : ""); };
+  return encodeGeo(m, file).then(function(blob){
+    return api("geoStart", {project:code, ifcId:file.id, size:blob.size}).then(function(st){
+      if (st.exists) return false;
+      var off = 0;
+      function next(){
+        if (off >= blob.size) return Promise.resolve(true);
+        var part = blob.slice(off, off + st.chunk);
+        note("guardando la versión procesada para el resto del equipo… " + Math.round(off / blob.size * 100) + " %");
+        return blobToB64(part).then(function(b64){ return api("geoChunk", {project:code, upload:st.upload, offset:off, data:b64}); })
+          .then(function(){ off += part.size; return next(); });
+      }
+      return next().then(function(){ note(""); toast("Versión procesada del modelo guardada (" + mbs(blob.size) + "): el resto lo abrirá sin procesarlo."); return true; });
+    });
+  }).catch(function(e){ note(""); console.warn("versión procesada:", e); });
+}
+
+function loadIfc(file, geoFile){
+  t0Load = performance.now(); ModelReady = null; PropsFile = file;
   $("ifcEmpty").hidden = true; $("bar").hidden = false; $("barFill").style.width = "4%";
   $("progress").textContent = "Preparando el modelo…";
   var key = geoKey(file);
-  return FileCache.get(key).then(function(geo){
-    if (geo){
-      finishModel(geo, file, "desde la caché de este equipo en " + secs(performance.now() - t0Load));
-      // las propiedades se cargan en segundo plano, sin bloquear el modelo
-      ModelReady = file.arrayBuffer().then(function(buf){ return ifcCall({cmd:"open", buffer:buf}, [buf]); });
-      ModelReady.catch(function(){});
-      return;
-    }
+  var cacheGeo = function(m){ FileCache.put(key, {offset:m.offset, parts:m.parts, ids:m.ids, bbox:m.bbox, types:m.types, tags:m.tags, storeys:m.storeys, storeyOrder:m.storeyOrder}, geoBytes(m)); };
+  var fromIfc = function(){
     var t1 = performance.now();
     return file.arrayBuffer(function(f){ $("barFill").style.width = Math.round(4 + f * 30) + "%"; $("progress").textContent = "Descargando el modelo… " + Math.round(f * 100) + " %"; }).then(function(buf){
-      var tDl = performance.now() - t1, t2 = performance.now(), mb = buf.byteLength / 1048576;
-      $("progress").textContent = "Leyendo el modelo…";
+      var tDl = performance.now() - t1, t2 = performance.now(), size = buf.byteLength;
+      $("progress").textContent = "Procesando el modelo (solo la primera vez)…";
       var p = ifcCall({cmd:"load", buffer:buf}, [buf]);
       ModelReady = p;
       return p.then(function(m){
-        var tParse = performance.now() - t2;
-        var bytes = m.parts.reduce(function(s, q){ return s + q.pos.byteLength + q.nor.byteLength + q.idx.byteLength + q.rE.byteLength * 3; }, 0) + m.bbox.byteLength + m.ids.byteLength;
-        FileCache.put(key, {offset:m.offset, parts:m.parts, ids:m.ids, bbox:m.bbox, types:m.types, tags:m.tags, storeys:m.storeys, storeyOrder:m.storeyOrder}, bytes);
-        finishModel(m, file, mb.toLocaleString("es-ES", {maximumFractionDigits:0}) + " MB · descarga " + secs(tDl) + " · lectura " + secs(tParse));
+        cacheGeo(m);
+        S.modelTiming = "IFC " + mbs(size) + " · descarga " + secs(tDl) + " · procesado " + secs(performance.now() - t2);
+        finishModel(m, file, S.modelTiming);
+        if (S.online && S.role === "equipo" && !geoFile && window.CompressionStream) uploadGeo(file, m);
       });
     });
+  };
+  return FileCache.get(key).then(function(geo){
+    if (geo){ S.modelTiming = "desde la caché de este equipo en " + secs(performance.now() - t0Load); finishModel(geo, file, S.modelTiming); return; }
+    if (!geoFile) return fromIfc();
+    var t1 = performance.now();
+    return geoFile.arrayBuffer(function(f){ $("barFill").style.width = Math.round(4 + f * 80) + "%"; $("progress").textContent = "Descargando la versión procesada… " + Math.round(f * 100) + " %"; })
+      .then(function(ab){ var size = ab.byteLength; return decodeGeo(ab).then(function(m){ return {m:m, size:size}; }); })
+      .then(function(r){
+        if (r.m.src && r.m.src.id !== file.id) throw new Error("la versión procesada no corresponde al IFC");
+        cacheGeo(r.m);
+        S.modelTiming = "versión procesada " + mbs(r.size) + " · " + secs(performance.now() - t1);
+        finishModel(r.m, file, S.modelTiming);
+      })
+      .catch(function(e){ console.warn("versión procesada no utilizable, se procesa el IFC:", e); return fromIfc(); });
   }).catch(function(err){
     $("bar").hidden = true; $("progress").textContent = "";
-    toast("No se ha podido leer el IFC: " + (err.message || err)); $("ifcEmpty").hidden = false;
+    toast("No se ha podido leer el modelo: " + (err.message || err)); $("ifcEmpty").hidden = false;
   });
 }
 
@@ -2428,7 +2547,7 @@ function buildModel(m){
   m.parts.forEach(function(p, pi){
     var geom = new THREE.BufferGeometry();
     geom.setAttribute("position", new THREE.BufferAttribute(p.pos, 3));
-    geom.setAttribute("normal", new THREE.BufferAttribute(p.nor, 3));
+    geom.setAttribute("normal", new THREE.BufferAttribute(p.nor, 3, p.nor instanceof Int8Array));
     var draw = new Uint32Array(p.idx.length); draw.set(p.idx);
     var ia = new THREE.BufferAttribute(draw, 1); ia.setUsage(THREE.DynamicDrawUsage); geom.setIndex(ia);
     geom.computeBoundingSphere();
@@ -2574,7 +2693,7 @@ function locateOnSheets(m){
     var h = document.createElement("p"); h.className = "hint"; h.textContent = "Aparece en " + found.length + (found.length === 1 ? " vista:" : " vistas:"); extra.appendChild(h);
     found.slice(0, 10).forEach(function(f){
       var b = document.createElement("button"); b.textContent = f.e.number + " · " + f.v.view.name;
-      b.addEventListener("click", function(){ var s = f.s; openSheet(f.e).then(function(){ S.modelSheet = s; drawOverlay(); scrollToSheetPoint(s); }); });
+      b.addEventListener("click", function(){ var s = f.s; needSheet(); openSheet(f.e).then(function(){ S.modelSheet = s; drawOverlay(); scrollToSheetPoint(s); }); });
       extra.appendChild(b);
     });
   } else if (Lib.entries.length){ rows.push(["En los planos", "fuera de las vistas del paquete"]); }
@@ -2591,7 +2710,7 @@ function selectElement(id){
   if (id === null || !Model){ setHighlight(-1); $("elemBox").innerHTML = '<p class="hint">Ningún elemento seleccionado.</p>'; return; }
   setHighlight(Model.index.get(id));
   var box = $("elemBox"); box.innerHTML = '<p class="hint">Leyendo propiedades…</p>';
-  (ModelReady || Promise.resolve()).then(function(){ return ifcCall({cmd:"props", id:id}); }).then(function(r){
+  ensureProps().then(function(){ return ifcCall({cmd:"props", id:id}); }).then(function(r){
     if (S.selectedId !== id) return;
     box.innerHTML = "";
     var t = document.createElement("table"); t.className = "kv";
@@ -2755,6 +2874,9 @@ window.addEventListener("keydown", function(e){
   if (e.key === "h" || e.key === "H") hideSelected();
   else if (e.key === "i" || e.key === "I") isolateSelected();
   else if (e.key === "Escape") showAll();
+  else if (e.key === "1") setMode("split");
+  else if (e.key === "2") setMode("sheet");
+  else if (e.key === "3") setMode("model");
   else if (e.key === "PageDown"){ e.preventDefault(); stepSheet(1); }
   else if (e.key === "PageUp"){ e.preventDefault(); stepSheet(-1); }
 });
@@ -3137,6 +3259,7 @@ if (CONFIG.ALLOW_LOCAL){
   var lb = document.createElement("button"); lb.textContent = "Entrar con Google"; lb.addEventListener("click", function(){ showLogin(""); });
   $("folderBtn").after(lb);
 } else { showLogin(""); }
+try { setMode(localStorage.getItem("cr_visorobra_vista") || "split"); } catch(e){ setMode("split"); }
 initAuth();
 renderPkg();
 requestRender();
