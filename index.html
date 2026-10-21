@@ -1743,7 +1743,8 @@ function downloadRemote(f, onProgress){
   if (inflight.has(key)) return inflight.get(key).then(function(b){ return b.slice(0); });
   var pr = FileCache.get(key).then(function(hit){
     if (hit){ if (onProgress) onProgress(1); return hit; }
-    return api("chunk", {project:S.project, id:f.id, offset:0, gz:true}).then(function(first){
+    var gz = !/\.pdf$/i.test(f.name);
+    return api("chunk", {project:S.project, id:f.id, offset:0, gz:gz}).then(function(first){
       var size = first.size, out = new Uint8Array(size), got = 0;
       var place = function(c){
         return b64ToBytes(c.data).then(function(ab){ return c.gz ? gunzip(ab) : ab; }).then(function(ab){
@@ -1755,7 +1756,7 @@ function downloadRemote(f, onProgress){
         var CH = first.chunk || first.length || 6 * 1024 * 1024, offsets = [];
         for (var o = CH; o < size; o += CH) offsets.push(o);
         var next = 0;
-        function worker(){ if (next >= offsets.length) return Promise.resolve(); var off = offsets[next++]; return api("chunk", {project:S.project, id:f.id, offset:off, gz:true}).then(place).then(worker); }
+        function worker(){ if (next >= offsets.length) return Promise.resolve(); var off = offsets[next++]; return api("chunk", {project:S.project, id:f.id, offset:off, gz:gz}).then(place).then(worker); }
         var pool = []; for (var w = 0; w < Math.min(6, offsets.length); w++) pool.push(worker());
         return Promise.all(pool);
       }).then(function(){ var buf = out.buffer; return FileCache.put(key, buf).then(function(){ return buf; }); });
@@ -1787,49 +1788,89 @@ function applyRole(){
 function resetWorkspace(){
   Lib.locs = new Map(); Lib.pdfs = new Map(); Lib.cache.forEach(function(p){ p.then(function(d){ d.destroy(); }).catch(function(){}); }); Lib.cache = new Map();
   Lib.entries = []; Lib.byNum = new Map(); S.cur = null; S.loc = null; S.page = null; S.manifest = null; S.ifcName = "";
-  Issues = []; Sync.since = ""; $("wrap").hidden = true; $("pdfEmpty").hidden = false; drawOverlay();
+  Issues = []; Sync.since = ""; S.openStats = null; Lib.keyMap = new Map(); $("wrap").hidden = true; $("pdfEmpty").hidden = false; drawOverlay();
   if (Model){ clearHighlight(); scene.remove(Model.group); Model = null; requestRender(); }
   $("ifcEmpty").hidden = false; $("progress").textContent = ""; $("checkBox").innerHTML = '<p class="hint">Se calcula al cargar el IFC con su _MODELO.json.</p>';
 }
 $("projSel").addEventListener("change", function(){ openProject(this.value); });
+function jsonKey(f){ return "json|" + S.project + "|" + f.id + "|" + f.modified; }
+// JSON del proyecto: primero los guardados en el equipo; los que falten, en lotes paralelos
+function fetchJsons(code, files, onEach){
+  return Promise.all(files.map(function(f){ return FileCache.get(jsonKey(f)).then(function(v){ return {f:f, v:v}; }); })).then(function(res){
+    var missing = [];
+    res.forEach(function(r){ if (typeof r.v === "string") onEach(r.f, r.v); else missing.push(r.f); });
+    var batches = [];
+    for (var i = 0; i < missing.length; i += 60) batches.push(missing.slice(i, i + 60));
+    var next = 0;
+    function worker(){
+      if (next >= batches.length || S.project !== code) return Promise.resolve();
+      var b = batches[next++];
+      return api("json", {project:code, ids:b.map(function(f){ return f.id; })}).then(function(texts){
+        b.forEach(function(f){ var t = texts[f.id]; if (t){ FileCache.put(jsonKey(f), t, t.length * 2); onEach(f, t); } });
+      }).then(worker);
+    }
+    var pool = []; for (var k = 0; k < Math.min(3, batches.length); k++) pool.push(worker());
+    return Promise.all(pool).then(function(){ return {cached:res.length - missing.length, fetched:missing.length}; });
+  });
+}
 function openProject(code){
   resetWorkspace(); S.project = code;
+  var t0 = performance.now();
   try { localStorage.setItem("cr_visorobra_proyecto", code); } catch(e){}
-  $("sheetList").innerHTML = '<p class="empty-list">Cargando el índice del proyecto…</p>';
-  return api("files", {project:code}).then(function(d){
+  $("sheetList").innerHTML = '<p class="empty-list">Abriendo el proyecto…</p>';
+  return api("open", {project:code}).then(function(d){
     if (S.project !== code) return;
     S.role = d.role; applyRole();
-    var locs = [], modelos = [], pdfs = [], ifcs = [];
+    Issues = d.issues.filter(function(i){ return !i.deleted; });
+    Sync.since = d.issues.reduce(function(m, i){ return i.updated_at > m ? i.updated_at : m; }, "");
+    renderIssueList();
+    var indices = [], locs = [], modelos = [], ifcs = [];
     d.files.forEach(function(f){
       var n = f.name.toLowerCase();
-      if (/_loc\.json$/.test(n)) locs.push(f); else if (/_modelo\.json$/.test(n)) modelos.push(f);
-      else if (n.endsWith(".pdf")) pdfs.push(f); else if (n.endsWith(".ifc")) ifcs.push(f);
+      if (/_indice\.json$/.test(n)) indices.push(f); else if (/_loc\.json$/.test(n)) locs.push(f);
+      else if (/_modelo\.json$/.test(n)) modelos.push(f);
+      else if (n.endsWith(".pdf")) Lib.addPdf(new RemoteFile(f)); else if (n.endsWith(".ifc")) ifcs.push(f);
     });
-    var jsonFiles = locs.concat(modelos), batches = [];
-    for (var i = 0; i < jsonFiles.length; i += 40) batches.push(jsonFiles.slice(i, i + 40));
-    var done = 0;
-    return batches.reduce(function(p, b){
-      return p.then(function(){
-        return api("json", {project:code, ids:b.map(function(f){ return f.id; })}).then(function(texts){
-          b.forEach(function(f){
-            var t = texts[f.id]; if (!t) return; var j; try { j = JSON.parse(t); } catch(e){ return; }
-            if (j.viewports && j.paper) Lib.addLoc(j, f.name);
-            else if (j.ifc_file && (!S.manifest || (j.generated || "") >= (S.manifest.generated || ""))) S.manifest = j;
-          });
-          done += b.length; $("sheetList").innerHTML = '<p class="empty-list">Cargando láminas… ' + done + " / " + jsonFiles.length + "</p>";
-        });
-      });
-    }, Promise.resolve()).then(function(){
+    var covered = new Set(), loading = true;
+    var refresh = debounce(function(){
       if (S.project !== code) return;
-      pdfs.forEach(function(f){ Lib.addPdf(new RemoteFile(f)); });
-      Lib.rebuild(); sharedInv = null;
-      if (S.manifest && S.manifest.ifc_coordinate_base === "shared") $("coordBase").value = "shared";
+      Lib.rebuild(!loading); sharedInv = null;
+      if (S.cur){ var again = Lib.byKey(S.cur.key); if (again){ S.cur = again; if (!S.loc && again.loc){ S.loc = again.loc; drawOverlay(); } } }
       renderSheetList(); renderPkg();
-      var first = Lib.visibleOrder()[0]; if (first) openSheet(first);
+      if (!S.cur){ var first = Lib.visibleOrder()[0]; if (first && first.loc) openSheet(first); }
+    }, 120);
+    function onJson(f, text){
+      var j; try { j = JSON.parse(text); } catch(e){ return; }
+      if (j.sheets) j.sheets.forEach(function(sh){
+        if (!sh.viewports || !sh.paper) return;
+        var pdf = (sh.pdf_file || sh.sheet.number + ".pdf");
+        covered.add(f.path + "|" + pdf.toLowerCase());
+        Lib.addLoc(sh, pdf.replace(/\.pdf$/i, "_LOC.json"));
+      });
+      else if (j.viewports && j.paper) Lib.addLoc(j, f.name);
+      else if (j.ifc_file && (!S.manifest || (j.generated || "") >= (S.manifest.generated || ""))){
+        S.manifest = j; if (j.ifc_coordinate_base === "shared") $("coordBase").value = "shared";
+      }
+      refresh();
+    }
+    var ifcStarted = false;
+    function startIfc(){
+      if (ifcStarted || S.project !== code) return; ifcStarted = true;
       var ifc = pickIfc(ifcs.map(function(f){ return new RemoteFile(f); }));
       if (ifc) loadIfc(ifc);
       else $("ifcEmptyTxt").textContent = "Este proyecto aún no tiene modelo publicado. Expórtalo desde Revit con «Exportar lámina obra» a la carpeta del visor.";
-      return syncIssues(true);
+    }
+    if (!modelos.length) startIfc();
+    // fase 1: manifiestos e índices de publicación (pocos archivos); el modelo arranca en cuanto se conoce
+    return fetchJsons(code, modelos.concat(indices), onJson).then(function(r1){
+      startIfc();
+      // fase 2: JSON por lámina que no estén ya en un índice (publicaciones antiguas)
+      var need = locs.filter(function(f){ return !covered.has(f.path + "|" + f.name.replace(/_loc\.json$/i, ".pdf").toLowerCase()); });
+      return fetchJsons(code, need, onJson).then(function(r2){
+        loading = false; refresh();
+        S.openStats = {secs:(performance.now() - t0) / 1000, cached:r1.cached + r2.cached, fetched:r1.fetched + r2.fetched};
+        setTimeout(renderPkg, 200);
+      });
     });
   }).catch(function(e){ toast(errText(e)); $("sheetList").innerHTML = '<p class="empty-list">' + errText(e) + "</p>"; });
 }
@@ -1926,6 +1967,7 @@ function intake(files){
     rs.forEach(function(r){
       var d; try { d = JSON.parse(r.t); } catch(e){ toast("«" + r.f.name + "» no es un JSON válido."); return; }
       if (d.viewports && d.paper) Lib.addLoc(d, r.f.name);
+      else if (d.sheets) d.sheets.forEach(function(sh){ if (sh.viewports && sh.paper) Lib.addLoc(sh, (sh.pdf_file || sh.sheet.number + ".pdf").replace(/\.pdf$/i, "_LOC.json")); });
       else if (d.ifc_file) { if (!S.manifest || (d.generated || "") >= (S.manifest.generated || "")) S.manifest = d; }
       else if (d.issues) pkgs.push(d);
     });
@@ -1955,7 +1997,9 @@ var Lib = {
     if (!cur || (d.generated || "") >= (cur.loc.generated || "")) this.locs.set(key, {loc:d, name:fname});
   },
   addPdf:function(f){ var k = f.name.toLowerCase(), cur = this.pdfs.get(k); if (!cur || (f.lastModified || 0) >= (cur.lastModified || 0)) this.pdfs.set(k, f); },
-  rebuild:function(){
+  keyMap:new Map(),
+  rebuild:function(includeOrphans){
+    if (includeOrphans === undefined) includeOrphans = true;
     var used = new Set(), entries = [], keys = new Set(), self = this;
     this.locs.forEach(function(v, key){
       var d = v.loc, pf = (d.pdf_file || "").toLowerCase(), file = self.pdfs.get(pf);
@@ -1965,7 +2009,7 @@ var Lib = {
       Object.keys(params).forEach(function(k){ keys.add(k); });
       entries.push({key:key, number:d.sheet.number, name:d.sheet.name || "", revision:d.sheet.revision || "", loc:d, file:file || null, params:params});
     });
-    this.pdfs.forEach(function(f, name){
+    if (includeOrphans) this.pdfs.forEach(function(f, name){
       if (used.has(name)) return;
       var nb = f.name.replace(/\.pdf$/i, "");
       entries.push({key:"pdf|" + name, number:nb, name:"", revision:"", loc:null, file:f, params:{}});
@@ -1977,10 +2021,11 @@ var Lib = {
       list.forEach(function(e, i){ e.current = i === list.length - 1; e.versions = list; });
     });
     this.entries = entries; this.byNum = byNum;
+    this.keyMap = new Map(entries.map(function(e){ return [e.key, e]; }));
     this.paramKeys = Array.from(keys).sort(natural);
     fillGroupBy();
   },
-  byKey:function(k){ return this.entries.filter(function(e){ return e.key === k; })[0] || null; },
+  byKey:function(k){ return this.keyMap.get(k) || null; },
   currentOf:function(number){ var l = this.byNum.get(number); return l ? l[l.length - 1] : null; },
   visibleOrder:function(){ return flatList; },
   doc:function(e){
@@ -2094,9 +2139,18 @@ function openSheet(e){
   if (li){ li.setAttribute("aria-current", "true"); li.scrollIntoView({block:"nearest"}); }
   return Lib.doc(e).then(function(d){ return d.getPage(1); }).then(function(p){
     if (seq !== openSeq) return;
-    S.page = p; S.zoom = 0; renderPdf(); renderIssueList(); renderPkg();
+    S.page = p; S.zoom = 0; renderPdf(); renderIssueList(); renderPkg(); prefetchAround(e);
     if (!e.loc) toast("La lámina " + e.number + " no tiene _LOC.json: se ve, pero no se enlaza con el modelo.");
   }).catch(function(err){ toast("No se ha podido abrir el PDF de " + e.number + ": " + err.message); });
+}
+
+function prefetchAround(e){
+  if (!S.online) return;
+  var i = flatList.indexOf(Lib.currentOf(e.number)), idle = window.requestIdleCallback || function(fn){ return setTimeout(fn, 400); };
+  [i + 1, i - 1, i + 2].forEach(function(k){
+    var n = flatList[k];
+    if (n && n.file && n.file.size && n.file.size < 30e6) idle(function(){ n.file.arrayBuffer().catch(function(){}); });
+  });
 }
 
 // ================================================================ dibujo del PDF
@@ -2775,6 +2829,7 @@ function renderPkg(){
   [["Láminas", cur.length + (Lib.entries.length > cur.length ? " vigentes (+" + (Lib.entries.length - cur.length) + " superadas)" : "")],
    ["Sin localización", String(cur.filter(function(e){ return !e.loc; }).length)],
    ["Modelo", S.ifcName || "pendiente"], ["Manifiesto", S.manifest ? (S.manifest.ifc_file || "sí") : "pendiente"]]
+  .concat(S.openStats ? [["Apertura", S.openStats.secs.toLocaleString("es-ES", {maximumFractionDigits:1}) + " s · " + S.openStats.fetched + " descargados, " + S.openStats.cached + " de la caché"]] : [])
   .forEach(function(r){ var tr = t.insertRow(); tr.insertCell().textContent = r[0]; tr.insertCell().textContent = r[1]; });
 }
 
