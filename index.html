@@ -151,6 +151,19 @@ dialog h3{margin:0 0 12px;font-size:16px;font-weight:600}
   padding:7px 12px;background:#FFF4D6;color:#5A4200;border-bottom:1px solid #E8C770;font-size:12.5px}
 .old-banner button{font-size:12px;padding:3px 10px}
 .sheets li .pub{color:var(--muted);font-weight:400;margin-left:6px}
+.mlabels{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:2}
+.mlabel{position:absolute;transform:translate(-50%,-120%);background:var(--panel);color:var(--ink);border:1px solid #D7263D;border-radius:5px;padding:1px 6px;font-size:12px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.mlist{list-style:none;margin:6px 0;padding:0;font-size:12.5px;font-variant-numeric:tabular-nums;max-height:200px;overflow-y:auto}
+.mlist li{display:flex;gap:6px;align-items:center;padding:3px 0;border-top:1px solid var(--line)}
+.mlist li span{flex:1}
+.mlist li small{color:var(--muted);display:block;font-size:11.5px}
+.mlist li button{padding:0 7px;font-size:12px}
+.sheet-area{position:relative}
+.m2panel{position:absolute;top:10px;right:14px}
+.tool-panel.compact .hint,.tool-panel.compact .mlist,.tool-panel.compact h4,.tool-panel.compact #m2Clear,.tool-panel.compact #m3Clear{display:none}
+.tool-panel.compact{width:auto;padding:6px 8px}
+.pane-model .pane-bar{flex-wrap:wrap;row-gap:6px}
+.pane-model .pane-bar .t{flex:1 1 90px;min-width:80px}
 .pkg-tools{display:flex;gap:6px;margin:4px 0 8px}
 .pkg-tools input{flex:1;min-width:0;border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:13px;background:var(--panel);color:var(--ink)}
 .pkg-list{max-height:300px;overflow-y:auto;border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12.5px}
@@ -227,6 +240,7 @@ dialog h3{margin:0 0 12px;font-size:16px;font-weight:600}
         <span class="tools">
           <button id="cloudBtn" aria-pressed="false" title="Arrastra sobre el plano para dibujar una nube y crear una incidencia">Nube</button>
           <button id="printBtn" title="Imprimir o descargar esta lámina">Imprimir</button>
+          <button id="m2Btn" aria-pressed="false" aria-controls="m2Panel">Medir</button>
           <button id="zOut" aria-label="Alejar">−</button>
           <span class="zoom" id="zLbl">—</span>
           <button id="zIn" aria-label="Acercar">+</button>
@@ -243,6 +257,16 @@ dialog h3{margin:0 0 12px;font-size:16px;font-weight:600}
           </div>
           <div class="sheets" id="sheetList"><p class="empty-list">Abre la carpeta del paquete exportado desde Revit: se cargan todas las láminas, el modelo y su manifiesto de una vez.</p></div>
         </div>
+        <div class="tool-panel m2panel" id="m2Panel" hidden>
+            <h4>Medir en el plano</h4>
+            <div class="btns">
+              <button id="m2Dist" aria-pressed="false">Distancia</button>
+              <button id="m2Area" aria-pressed="false">Área</button>
+            </div>
+            <p class="hint" id="m2Hint">Medida real según la escala de cada vista. Mayúsculas: horizontal o vertical. Área: doble clic o clic en el primer punto para cerrar.</p>
+            <ul class="mlist" id="m2List"></ul>
+            <div class="btns"><button id="m2Clear">Borrar medidas</button></div>
+          </div>
         <div class="pdf-scroll" id="pdfScroll">
           <div class="old-banner" id="oldBanner" hidden><span id="oldTxt"></span> <button type="button" id="goCurrent">Ver la vigente</button></div>
           <div class="empty" id="pdfEmpty"><span>Elige una lámina en la lista. Haz clic en una vista para ir a ese punto del modelo. Ctrl + rueda para hacer zoom.</span></div>
@@ -257,6 +281,7 @@ dialog h3{margin:0 0 12px;font-size:16px;font-weight:600}
       <div class="pane-bar">
         <span class="t">Modelo 3D</span>
         <label class="ctl" title="Al hacer clic en el plano, corta el 3D a la altura del plano de corte o por el plano de la sección"><input type="checkbox" id="clipOn"> Cortar como el plano</label>
+        <button id="m3Btn" aria-pressed="false" aria-controls="m3Panel">Medir</button>
         <button id="secBtn" aria-pressed="false" aria-controls="secPanel">Sección</button>
         <button id="visBtn" aria-pressed="false" aria-controls="visPanel">Visibilidad</button>
         <button id="shotBtn" title="Crea una incidencia con la vista 3D actual">Incidencia</button>
@@ -266,6 +291,18 @@ dialog h3{margin:0 0 12px;font-size:16px;font-weight:600}
         <div class="empty" id="ifcEmpty"><span id="ifcEmptyTxt">Elige un proyecto para cargar su modelo. Haz clic en un elemento para ver sus propiedades y en qué planos aparece.</span></div>
         <div class="bar" id="bar" hidden><i id="barFill"></i></div>
         <div class="progress" id="progress"></div>
+        <div class="mlabels" id="m3Labels" aria-live="polite"></div>
+        <div class="tool-panel" id="m3Panel" hidden>
+          <h4>Medir en el modelo</h4>
+          <div class="btns">
+            <button id="m3Dist" aria-pressed="false">Distancia</button>
+            <button id="m3Height" aria-pressed="false">Altura</button>
+            <button id="m3Area" aria-pressed="false">Área</button>
+          </div>
+          <p class="hint" id="m3Hint">Elige qué medir y haz clic en el modelo. Se ajusta a vértices (■) y aristas (◆).</p>
+          <ul class="mlist" id="m3List"></ul>
+          <div class="btns"><button id="m3Clear">Borrar medidas</button></div>
+        </div>
         <div class="tool-panel" id="secPanel" hidden>
           <h4>Caja de sección</h4>
           <label class="chk"><input type="checkbox" id="boxOn"> Activar caja</label>
@@ -2305,7 +2342,7 @@ function openSheet(e){
   if (li){ li.setAttribute("aria-current", "true"); li.scrollIntoView({block:"nearest"}); }
   return Lib.doc(e).then(function(d){ return d.getPage(1); }).then(function(p){
     if (seq !== openSeq) return;
-    S.page = p; S.zoom = 0; renderPdf(); renderIssueList(); renderPkg(); prefetchAround(e);
+    S.page = p; S.zoom = 0; M2.pts = []; renderPdf(); renderIssueList(); renderPkg(); prefetchAround(e); if (!$("m2Panel").hidden) renderM2List();
     if (!e.loc) toast("La lámina " + e.number + " no tiene _LOC.json: se ve, pero no se enlaza con el modelo.");
   }).catch(function(err){ toast("No se ha podido abrir el PDF de " + e.number + ": " + err.message); });
 }
@@ -2586,12 +2623,14 @@ function drawOverlay(){
   });
   if (d) svg("path", {d:d, fill:"none", stroke:cssVar("--o-box"), "stroke-width":1, "stroke-dasharray":"6 4"}, ov);
   drawClouds(ov);
+  drawMeasures2D(ov);
   if (S.pickSheet) drawCross(ov, S.pickSheet, cssVar("--o-pick"));
   if (S.modelSheet) drawCross(ov, S.modelSheet, cssVar("--o-model"));
 }
 
 // ================================================================ plano -> modelo
 $("ov").addEventListener("click", function(e){
+  if (M2.mode){ m2Click(e); return; }
   if (Cloud.mode || Cloud.justDrew){ Cloud.justDrew = false; return; }
   var incId = e.target.getAttribute && e.target.getAttribute("data-inc");
   if (incId){ openIssue(incId); return; }
@@ -2672,7 +2711,7 @@ var marker = new THREE.Group(); marker.visible = false; scene.add(marker);
 var highlightMat = new THREE.MeshLambertMaterial({color:0x1F5FAD, emissive:0x0a2a55, side:THREE.DoubleSide, polygonOffset:true, polygonOffsetFactor:-2, polygonOffsetUnits:-2});
 var pending = false;
 function requestRender(){ if (!pending){ pending = true; requestAnimationFrame(frame); } }
-function frame(){ pending = false; if (!host.clientWidth) return; var moving = controls.update(); renderer.render(scene, camera); if (moving) requestRender(); }
+function frame(){ pending = false; if (!host.clientWidth) return; var moving = controls.update(); renderer.render(scene, camera); if (typeof updateMeasureLabels === "function") updateMeasureLabels(); if (moving) requestRender(); }
 controls.addEventListener("change", requestRender);
 function resize(){ var w = host.clientWidth, h = host.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); requestRender(); }
 new ResizeObserver(resize).observe(host); resize();
@@ -2695,6 +2734,236 @@ function fitAll(){
   flyTo(c, c.clone().add(new THREE.Vector3(size*0.6, size*0.5, size*0.6)));
 }
 $("fitModel").addEventListener("click", fitAll);
+
+// ================================================================ mediciones
+function fmtLen(m){ return m.toLocaleString("es-ES", {minimumFractionDigits:3, maximumFractionDigits:3}) + " m"; }
+function fmtArea(m2){ return m2.toLocaleString("es-ES", {minimumFractionDigits:2, maximumFractionDigits:2}) + " m²"; }
+function newellArea(pts){ // área de un polígono 3D (plano) por el método de Newell
+  var nx = 0, ny = 0, nz = 0;
+  for (var i = 0; i < pts.length; i++){ var a = pts[i], b = pts[(i + 1) % pts.length]; nx += (a.y - b.y) * (a.z + b.z); ny += (a.z - b.z) * (a.x + b.x); nz += (a.x - b.x) * (a.y + b.y); }
+  return Math.sqrt(nx*nx + ny*ny + nz*nz) / 2;
+}
+function perimeter(pts){ var s = 0; for (var i = 0; i < pts.length; i++) s += pts[i].distanceTo(pts[(i + 1) % pts.length]); return s; }
+function cancelMeasures(){ M3.pts = []; M2.pts = []; setM3Mode(null); setM2Mode(null); redraw3DMeasures(); drawOverlay(); }
+
+// ---- 3D
+var M3 = {mode:null, pts:[], items:[], hover:null, seq:0, keep:true};
+var m3Group = new THREE.Group(); m3Group.renderOrder = 20; scene.add(m3Group);
+var m3Line = new THREE.LineBasicMaterial({color:0xD7263D, depthTest:false, transparent:true});
+var m3Guide = new THREE.LineDashedMaterial({color:0xD7263D, depthTest:false, transparent:true, dashSize:0.15, gapSize:0.1});
+var m3Fill = new THREE.MeshBasicMaterial({color:0xD7263D, transparent:true, opacity:0.18, depthTest:false, side:THREE.DoubleSide});
+var m3Pt = new THREE.PointsMaterial({color:0xD7263D, size:8, sizeAttenuation:false, depthTest:false});
+var m3Snap = new THREE.PointsMaterial({color:0x1F5FAD, size:11, sizeAttenuation:false, depthTest:false});
+function toScreen(v){ var p = v.clone().project(camera), w = renderer.domElement.clientWidth, h = renderer.domElement.clientHeight; return {x:(p.x + 1) / 2 * w, y:(1 - p.y) / 2 * h, front:p.z < 1}; }
+// ajuste a vértice (12 px) o a arista (8 px) del triángulo tocado
+function snapPoint(h, ev){
+  if (!h || !h.tri) return h ? {p:h.point.clone(), kind:"cara"} : null;
+  var r = renderer.domElement.getBoundingClientRect(), mx = ev.clientX - r.left, my = ev.clientY - r.top, best = null, bd = 12;
+  h.tri.forEach(function(v){ var s = toScreen(v), d = Math.hypot(s.x - mx, s.y - my); if (d < bd){ bd = d; best = v; } });
+  if (best) return {p:best.clone(), kind:"vértice"};
+  bd = 8;
+  for (var i = 0; i < 3; i++){
+    var a = h.tri[i], b = h.tri[(i + 1) % 3], ab = b.clone().sub(a), t = ab.lengthSq() ? h.point.clone().sub(a).dot(ab) / ab.lengthSq() : 0;
+    t = Math.max(0, Math.min(1, t)); var q = a.clone().add(ab.multiplyScalar(t)), s = toScreen(q), d = Math.hypot(s.x - mx, s.y - my);
+    if (d < bd){ bd = d; best = q; }
+  }
+  if (best) return {p:best, kind:"arista"};
+  return {p:h.point.clone(), kind:"cara"};
+}
+function lineObj(a, b, mat){ var g = new THREE.BufferGeometry().setFromPoints([a, b]); var l = new THREE.Line(g, mat); if (mat === m3Guide) l.computeLineDistances(); l.renderOrder = 20; return l; }
+function ptsObj(list, mat){ var g = new THREE.BufferGeometry().setFromPoints(list); var o = new THREE.Points(g, mat); o.renderOrder = 21; return o; }
+function polyFill(pts){
+  if (pts.length < 3) return null;
+  var n = new THREE.Vector3(), c = new THREE.Vector3();
+  for (var i = 0; i < pts.length; i++){ var a = pts[i], b = pts[(i + 1) % pts.length]; n.x += (a.y - b.y) * (a.z + b.z); n.y += (a.z - b.z) * (a.x + b.x); n.z += (a.x - b.x) * (a.y + b.y); c.add(a); }
+  n.normalize(); c.divideScalar(pts.length);
+  var u = Math.abs(n.y) < 0.9 ? new THREE.Vector3(0, 1, 0).cross(n).normalize() : new THREE.Vector3(1, 0, 0).cross(n).normalize(), w = n.clone().cross(u);
+  var flat = pts.map(function(p){ var d = p.clone().sub(c); return new THREE.Vector2(d.dot(u), d.dot(w)); });
+  var tris = THREE.ShapeUtils.triangulateShape(flat, []), pos = [];
+  tris.forEach(function(tr){ tr.forEach(function(k){ pos.push(pts[k].x, pts[k].y, pts[k].z); }); });
+  var g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  var m = new THREE.Mesh(g, m3Fill); m.renderOrder = 19; return m;
+}
+function redraw3DMeasures(){
+  while (m3Group.children.length){ var c = m3Group.children.pop(); if (c.geometry) c.geometry.dispose(); }
+  var all = M3.items.concat(M3.pts.length ? [{kind:M3.mode, pts:M3.pts.concat(M3.hover ? [M3.hover.p] : []), live:true}] : []);
+  all.forEach(function(it){
+    var p = it.pts; if (!p.length) return;
+    m3Group.add(ptsObj(p, m3Pt));
+    if (it.kind === "height" && p.length >= 2){
+      var corner = new THREE.Vector3(p[0].x, p[1].y, p[0].z);
+      m3Group.add(lineObj(p[0], corner, m3Line)); m3Group.add(lineObj(corner, p[1], m3Guide));
+    } else {
+      for (var i = 0; i + 1 < p.length; i++) m3Group.add(lineObj(p[i], p[i + 1], m3Line));
+      if (it.kind === "area" && p.length >= 3){ m3Group.add(lineObj(p[p.length - 1], p[0], it.live ? m3Guide : m3Line)); var f = polyFill(p); if (f) m3Group.add(f); }
+    }
+  });
+  if (M3.hover) m3Group.add(ptsObj([M3.hover.p], m3Snap));
+  requestRender();
+}
+function m3Value(it){
+  var p = it.pts;
+  if (it.kind === "dist"){ var d = p[0].distanceTo(p[1]), dh = Math.abs(p[1].y - p[0].y); return {main:fmtLen(d), sub:"desnivel " + fmtLen(dh), anchor:p[0].clone().add(p[1]).multiplyScalar(0.5)}; }
+  if (it.kind === "height"){ var h = Math.abs(p[1].y - p[0].y), hz = Math.hypot(p[1].x - p[0].x, p[1].z - p[0].z); return {main:"Δh " + fmtLen(h), sub:"en planta " + fmtLen(hz), anchor:new THREE.Vector3(p[0].x, (p[0].y + p[1].y) / 2, p[0].z)}; }
+  var c = new THREE.Vector3(); p.forEach(function(q){ c.add(q); }); c.divideScalar(p.length);
+  return {main:fmtArea(newellArea(p)), sub:"perímetro " + fmtLen(perimeter(p)), anchor:c};
+}
+function updateMeasureLabels(){
+  var box = $("m3Labels"); if (!box) return;
+  if (!M3.items.length){ if (box.firstChild) box.innerHTML = ""; return; }
+  if (box.children.length !== M3.items.length){
+    box.innerHTML = "";
+    M3.items.forEach(function(it){ var d = document.createElement("div"); d.className = "mlabel"; d.textContent = it.value.main; box.appendChild(d); });
+  }
+  M3.items.forEach(function(it, i){ var s = toScreen(it.value.anchor), d = box.children[i]; d.style.display = s.front ? "" : "none"; d.style.left = s.x + "px"; d.style.top = s.y + "px"; });
+}
+function renderM3List(){
+  var ul = $("m3List"); ul.innerHTML = "";
+  M3.items.forEach(function(it, i){
+    var li = document.createElement("li"), sp = document.createElement("span"), sm = document.createElement("small"), b = document.createElement("button");
+    sp.textContent = {dist:"Distancia", height:"Altura", area:"Área"}[it.kind] + " " + it.no + ": " + it.value.main; sm.textContent = it.value.sub; sp.appendChild(sm);
+    b.textContent = "×"; b.title = "Borrar esta medida"; b.addEventListener("click", function(){ M3.items.splice(i, 1); renderM3List(); redraw3DMeasures(); $("m3Labels").innerHTML = ""; updateMeasureLabels(); });
+    li.appendChild(sp); li.appendChild(b); ul.appendChild(li);
+  });
+}
+function finishM3(){
+  var it = {kind:M3.mode, pts:M3.pts.slice(), no:++M3.seq}; it.value = m3Value(it);
+  M3.items.push(it); M3.pts = []; M3.hover = null;
+  if (!M3.keep) setM3Mode(null);
+  renderM3List(); redraw3DMeasures(); $("m3Labels").innerHTML = ""; updateMeasureLabels();
+}
+function measure3DClick(h, ev){
+  var s = snapPoint(h, ev); if (!s) return;
+  if (M3.mode === "area" && M3.pts.length >= 3){
+    var f = toScreen(M3.pts[0]), r = renderer.domElement.getBoundingClientRect();
+    if (Math.hypot(f.x - (ev.clientX - r.left), f.y - (ev.clientY - r.top)) < 12){ finishM3(); return; }
+  }
+  var lastP = M3.pts[M3.pts.length - 1];
+  if (lastP && lastP.distanceTo(s.p) < 1e-4) return;  // doble clic: no repetir el punto
+  M3.pts.push(s.p);
+  if ((M3.mode === "dist" || M3.mode === "height") && M3.pts.length === 2) finishM3(); else redraw3DMeasures();
+}
+var m3MoveQueued = false;
+renderer.domElement.addEventListener("pointermove", function(ev){
+  if (!M3.mode || !Model || m3MoveQueued) return;
+  m3MoveQueued = true;
+  requestAnimationFrame(function(){
+    m3MoveQueued = false;
+    var r = renderer.domElement.getBoundingClientRect(), ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2((ev.clientX - r.left)/r.width*2 - 1, -((ev.clientY - r.top)/r.height)*2 + 1), camera);
+    M3.hover = snapPoint(pick(ray.ray.origin, ray.ray.direction, true), ev);
+    $("m3Hint").textContent = M3.hover ? "Ajuste: " + M3.hover.kind + (M3.pts.length ? " · punto " + (M3.pts.length + 1) : "") : "Mueve el cursor sobre el modelo.";
+    redraw3DMeasures();
+  });
+});
+renderer.domElement.addEventListener("dblclick", function(){ if (M3.mode === "area" && M3.pts.length >= 3) finishM3(); });
+function setM3Mode(mode){
+  M3.mode = mode; M3.pts = []; M3.hover = null;
+  ["m3Dist", "m3Height", "m3Area"].forEach(function(id){ $(id).setAttribute("aria-pressed", "false"); });
+  if (mode) $({dist:"m3Dist", height:"m3Height", area:"m3Area"}[mode]).setAttribute("aria-pressed", "true");
+  renderer.domElement.style.cursor = mode ? "crosshair" : "";
+  $("m3Panel").classList.toggle("compact", !!mode);
+  $("m3Hint").textContent = mode === "area" ? "Clic en los vértices; doble clic o clic en el primero para cerrar. Esc para terminar." : mode ? "Clic en dos puntos. Puedes encadenar medidas; Esc para terminar." : "Elige qué medir y haz clic en el modelo. Se ajusta a vértices (■) y aristas (◆).";
+  redraw3DMeasures();
+}
+[["m3Dist", "dist"], ["m3Height", "height"], ["m3Area", "area"]].forEach(function(c){
+  $(c[0]).addEventListener("click", function(){ if (!Model){ toast("Carga el modelo para medir."); return; } setM3Mode(M3.mode === c[1] ? null : c[1]); });
+});
+$("m3Clear").addEventListener("click", function(){ M3.items = []; M3.seq = 0; renderM3List(); $("m3Labels").innerHTML = ""; setM3Mode(null); });
+$("m3Btn").addEventListener("click", function(){
+  var open = $("m3Panel").hidden; $("m3Panel").hidden = !open; this.setAttribute("aria-pressed", open ? "true" : "false");
+  if (open){ ["secPanel", "visPanel"].forEach(function(id){ $(id).hidden = true; }); ["secBtn", "visBtn"].forEach(function(id){ $(id).setAttribute("aria-pressed", "false"); }); }
+  else setM3Mode(null);
+});
+
+// ---- plano
+var M2 = {mode:null, pts:[], items:new Map(), hover:null, seq:0, keep:true};
+function sheetItems(){ var k = S.cur ? S.cur.key : ""; if (!M2.items.has(k)) M2.items.set(k, []); return M2.items.get(k); }
+// lámina (mm) → modelo (mm) con la vista que contiene todos los puntos; si no hay, medida en papel
+function m2Value(kind, pts){
+  var v = S.loc ? viewportAt(pts[0]) : null;
+  if (v) pts.forEach(function(p){ if (viewportAt(p) !== v) v = null; });
+  var real = function(p){ var m = apply(v.regions[0].sheet_to_model, [p[0], p[1], 0]); return new THREE.Vector3(m[0] / 1000, m[1] / 1000, m[2] / 1000); };
+  var P = v ? pts.map(real) : pts.map(function(p){ return new THREE.Vector3(p[0] / 1000, p[1] / 1000, 0); });
+  var where = v ? v.view.name + " · 1:" + v.view.scale : "en papel (fuera de las vistas)";
+  if (kind === "dist"){
+    var d = P[0].distanceTo(P[1]);
+    return {main:v ? fmtLen(d) : (d * 1000).toLocaleString("es-ES", {maximumFractionDigits:1}) + " mm", sub:where};
+  }
+  var a = newellArea(P), per = perimeter(P);
+  return {main:v ? fmtArea(a) : (a * 1e6).toLocaleString("es-ES", {maximumFractionDigits:0}) + " mm²", sub:(v ? "perímetro " + fmtLen(per) + " · " : "") + where};
+}
+function orthoSnap(s, ev){
+  if (!ev.shiftKey || !M2.pts.length) return s;
+  var last = M2.pts[M2.pts.length - 1];
+  return Math.abs(s[0] - last[0]) > Math.abs(s[1] - last[1]) ? [s[0], last[1]] : [last[0], s[1]];
+}
+function drawMeasures2D(ov){
+  if (!S.cur) return;
+  var red = cssVar("--o-pick"), list = sheetItems().concat(M2.pts.length ? [{kind:M2.mode, pts:M2.pts.concat(M2.hover ? [M2.hover] : []), live:true}] : []);
+  list.forEach(function(it){
+    var px = it.pts.map(function(p){ return sheetToPx(p[0], p[1]); });
+    if (!px.length) return;
+    var d = "M" + px.map(function(q){ return q[0].toFixed(1) + " " + q[1].toFixed(1); }).join("L");
+    if (it.kind === "area" && px.length >= 3) d += "Z";
+    svg("path", {d:d, fill:it.kind === "area" && px.length >= 3 ? "rgba(215,38,61,0.12)" : "none", stroke:red, "stroke-width":1.75, "stroke-dasharray":it.live ? "5 3" : "none", style:"pointer-events:none"}, ov);
+    px.forEach(function(q){ svg("circle", {cx:q[0], cy:q[1], r:3.5, fill:red, style:"pointer-events:none"}, ov); });
+    if (!it.live && it.value){
+      var cx = px.reduce(function(s, q){ return s + q[0]; }, 0) / px.length, cy = px.reduce(function(s, q){ return s + q[1]; }, 0) / px.length;
+      var tx = svg("text", {x:cx, y:cy - 8, "text-anchor":"middle", "font-size":12, "font-weight":700, fill:red, stroke:"#fff", "stroke-width":3, "paint-order":"stroke", "font-family":"IBM Plex Sans, system-ui, sans-serif", style:"pointer-events:none"}, ov);
+      tx.textContent = it.value.main;
+    }
+  });
+}
+function renderM2List(){
+  var ul = $("m2List"); ul.innerHTML = "";
+  sheetItems().forEach(function(it, i){
+    var li = document.createElement("li"), sp = document.createElement("span"), sm = document.createElement("small"), b = document.createElement("button");
+    sp.textContent = (it.kind === "dist" ? "Distancia " : "Área ") + it.no + ": " + it.value.main; sm.textContent = it.value.sub; sp.appendChild(sm);
+    b.textContent = "×"; b.title = "Borrar esta medida"; b.addEventListener("click", function(){ sheetItems().splice(i, 1); renderM2List(); drawOverlay(); });
+    li.appendChild(sp); li.appendChild(b); ul.appendChild(li);
+  });
+}
+function finishM2(){
+  var it = {kind:M2.mode, pts:M2.pts.slice(), no:++M2.seq}; it.value = m2Value(it.kind, it.pts);
+  sheetItems().push(it); M2.pts = []; M2.hover = null; renderM2List(); drawOverlay();
+  if (!M2.keep) setM2Mode(null);
+}
+function setM2Mode(mode){
+  M2.mode = mode; M2.pts = []; M2.hover = null;
+  ["m2Dist", "m2Area"].forEach(function(id){ $(id).setAttribute("aria-pressed", "false"); });
+  if (mode) $(mode === "dist" ? "m2Dist" : "m2Area").setAttribute("aria-pressed", "true");
+  if (mode && Cloud.mode){ Cloud.mode = false; $("cloudBtn").setAttribute("aria-pressed", "false"); }
+  $("m2Panel").classList.toggle("compact", !!mode);
+  $("ov").style.cursor = mode ? "crosshair" : "crosshair";
+  drawOverlay();
+}
+function m2Click(e){
+  var r = $("ov").getBoundingClientRect(), s = orthoSnap(pxToSheet(e.clientX - r.left, e.clientY - r.top), e);
+  if (M2.mode === "area" && M2.pts.length >= 3){
+    var f = sheetToPx(M2.pts[0][0], M2.pts[0][1]);
+    if (Math.hypot(f[0] - (e.clientX - r.left), f[1] - (e.clientY - r.top)) < 10){ finishM2(); return; }
+  }
+  var last = M2.pts[M2.pts.length - 1];
+  if (last){ var lp = sheetToPx(last[0], last[1]), np = sheetToPx(s[0], s[1]); if (Math.hypot(lp[0] - np[0], lp[1] - np[1]) < 3) return; }  // doble clic: no repetir el punto
+  M2.pts.push(s);
+  if (M2.mode === "dist" && M2.pts.length === 2) finishM2(); else drawOverlay();
+}
+var m2MoveQueued = false;
+$("ov").addEventListener("pointermove", function(e){
+  if (!M2.mode || !M2.pts.length || m2MoveQueued) return;
+  m2MoveQueued = true;
+  requestAnimationFrame(function(){ m2MoveQueued = false; var r = $("ov").getBoundingClientRect(); M2.hover = orthoSnap(pxToSheet(e.clientX - r.left, e.clientY - r.top), e); drawOverlay(); });
+});
+$("ov").addEventListener("dblclick", function(){ if (M2.mode === "area" && M2.pts.length >= 3) finishM2(); });
+[["m2Dist", "dist"], ["m2Area", "area"]].forEach(function(c){
+  $(c[0]).addEventListener("click", function(){ if (!S.page){ toast("Abre una lámina para medir."); return; } setM2Mode(M2.mode === c[1] ? null : c[1]); });
+});
+$("m2Clear").addEventListener("click", function(){ M2.items.set(S.cur ? S.cur.key : "", []); renderM2List(); setM2Mode(null); });
+$("m2Btn").addEventListener("click", function(){
+  var open = $("m2Panel").hidden; $("m2Panel").hidden = !open; this.setAttribute("aria-pressed", open ? "true" : "false");
+  if (!open) setM2Mode(null); else renderM2List();
+});
 
 // ================================================================ lector IFC en segundo plano
 var Ifc = {worker:null, ready:null, rid:0, pending:{}};
@@ -2925,7 +3194,7 @@ function pick(origin, dir, useClip){
     if (tmax >= Math.max(tmin, 0)) cand.push([Math.max(tmin, 0), i]);
   }
   cand.sort(function(a, b){ return a[0] - b[0]; });
-  var clip = useClip && renderer.clippingPlanes.length, best = Infinity, bi = -1, bn = [0,0,0], tmp = new THREE.Vector3();
+  var clip = useClip && renderer.clippingPlanes.length, best = Infinity, bi = -1, bn = [0,0,0], tmp = new THREE.Vector3(), bP = null, ba = 0, bb = 0, bd = 0;
   for (var c = 0; c < cand.length; c++){
     if (cand[c][0] > best) break;
     var ei = cand[c][1], R = Model.ranges[ei];
@@ -2945,7 +3214,7 @@ function pick(origin, dir, useClip){
         var t = (e2x*qx + e2y*qy + e2z*qz) * inv;
         if (t <= 1e-6 || t >= best) continue;
         if (clip){ tmp.set(origin.x + dx*t, origin.y + dy*t, origin.z + dz*t); if (!passesClip(tmp)) continue; }
-        best = t; bi = ei;
+        best = t; bi = ei; bP = P; ba = a; bb = b; bd = d;
         bn[0] = e1y*e2z - e1z*e2y; bn[1] = e1z*e2x - e1x*e2z; bn[2] = e1x*e2y - e1y*e2x;
       }
     }
@@ -2953,7 +3222,8 @@ function pick(origin, dir, useClip){
   if (bi < 0) return null;
   var normal = new THREE.Vector3(bn[0], bn[1], bn[2]).normalize();
   if (normal.dot(dir) > 0) normal.negate();
-  return {id:Model.ids[bi], index:bi, point:new THREE.Vector3(origin.x + dx*best, origin.y + dy*best, origin.z + dz*best), normal:normal};
+  var tv = function(k){ return new THREE.Vector3(bP[k] + off.x, bP[k+1] + off.y, bP[k+2] + off.z); };
+  return {id:Model.ids[bi], index:bi, point:new THREE.Vector3(origin.x + dx*best, origin.y + dy*best, origin.z + dz*best), normal:normal, tri:[tv(ba), tv(bb), tv(bd)]};
 }
 function clearHighlight(){ Highlight.forEach(function(me){ me.parent && me.parent.remove(me); }); Highlight = []; }
 function setHighlight(index){
@@ -2981,6 +3251,7 @@ renderer.domElement.addEventListener("pointerup", function(e){
   var r = renderer.domElement.getBoundingClientRect();
   var ray = new THREE.Raycaster(); ray.setFromCamera(new THREE.Vector2((e.clientX - r.left)/r.width*2 - 1, -((e.clientY - r.top)/r.height)*2 + 1), camera);
   var h = pick(ray.ray.origin, ray.ray.direction, true);
+  if (M3.mode){ measure3DClick(h, e); return; }
   if (Sec.picking){ Sec.picking = false; $("secFace").setAttribute("aria-pressed", "false"); if (h) setFacePlane(h); return; }
   if (!h){ selectElement(null); return; }
   placeMarker(h.point); selectElement(h.id);
@@ -3192,8 +3463,9 @@ function togglePanel(btn, panel, other, otherBtn){
   var open = $(panel).hidden; $(panel).hidden = !open; $(btn).setAttribute("aria-pressed", open ? "true" : "false");
   if (open){ $(other).hidden = true; $(otherBtn).setAttribute("aria-pressed", "false"); }
 }
-$("secBtn").addEventListener("click", function(){ togglePanel("secBtn", "secPanel", "visPanel", "visBtn"); });
-$("visBtn").addEventListener("click", function(){ togglePanel("visBtn", "visPanel", "secPanel", "secBtn"); });
+function closeM3Panel(){ $("m3Panel").hidden = true; $("m3Btn").setAttribute("aria-pressed", "false"); setM3Mode(null); }
+$("secBtn").addEventListener("click", function(){ closeM3Panel(); togglePanel("secBtn", "secPanel", "visPanel", "visBtn"); });
+$("visBtn").addEventListener("click", function(){ closeM3Panel(); togglePanel("visBtn", "visPanel", "secPanel", "secBtn"); });
 
 // ================================================================ visibilidad
 var CAT_ES = {IFCWALL:"Muros", IFCWALLSTANDARDCASE:"Muros", IFCCURTAINWALL:"Muros cortina", IFCPLATE:"Muros cortina", IFCMEMBER:"Montantes y perfiles",
@@ -3258,7 +3530,7 @@ window.addEventListener("keydown", function(e){
   if ($("incDlg").open || $("printDlg").open || /INPUT|TEXTAREA|SELECT/.test(document.activeElement && document.activeElement.tagName)) return;
   if (e.key === "h" || e.key === "H") hideSelected();
   else if (e.key === "i" || e.key === "I") isolateSelected();
-  else if (e.key === "Escape") showAll();
+  else if (e.key === "Escape"){ if (M3.mode || M2.mode) cancelMeasures(); else showAll(); }
   else if (e.key === "1") setMode("split");
   else if (e.key === "2") setMode("sheet");
   else if (e.key === "3") setMode("model");
