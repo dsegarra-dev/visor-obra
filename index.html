@@ -142,6 +142,15 @@ dialog h3{margin:0 0 12px;font-size:16px;font-weight:600}
 .dlist li:hover{color:var(--accent)}
 .dlist .m{color:var(--muted)}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--panel);padding:8px 14px;border-radius:8px;font-size:13px;z-index:30;max-width:min(560px,92vw)}
+#verSel{max-width:190px;font-size:12.5px;padding:4px 6px}
+.pane{overflow:hidden}
+.pane-sheet .pane-bar{flex-wrap:wrap;row-gap:6px}
+.pane-sheet .pane-bar .t{flex:1 1 140px;min-width:110px}
+.pane-sheet .pane-bar .tools{display:flex;gap:6px;align-items:center;margin-left:auto}
+.old-banner{position:sticky;top:0;left:0;z-index:3;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;
+  padding:7px 12px;background:#FFF4D6;color:#5A4200;border-bottom:1px solid #E8C770;font-size:12.5px}
+.old-banner button{font-size:12px;padding:3px 10px}
+.sheets li .pub{color:var(--muted);font-weight:400;margin-left:6px}
 .pkg-tools{display:flex;gap:6px;margin:4px 0 8px}
 .pkg-tools input{flex:1;min-width:0;border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:13px;background:var(--panel);color:var(--ink)}
 .pkg-list{max-height:300px;overflow-y:auto;border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12.5px}
@@ -214,12 +223,15 @@ dialog h3{margin:0 0 12px;font-size:16px;font-weight:600}
         <button id="prevSheet" aria-label="Lámina anterior" title="Lámina anterior (Re Pág)">‹</button>
         <button id="nextSheet" aria-label="Lámina siguiente" title="Lámina siguiente (Av Pág)">›</button>
         <span class="t" id="sheetTitle">Sin lámina</span>
-        <button id="cloudBtn" aria-pressed="false" title="Arrastra sobre el plano para dibujar una nube y crear una incidencia">Nube</button>
-        <button id="printBtn" title="Imprimir o descargar esta lámina">Imprimir</button>
-        <button id="zOut" aria-label="Alejar">−</button>
-        <span class="zoom" id="zLbl">—</span>
-        <button id="zIn" aria-label="Acercar">+</button>
-        <button id="zFit">Ajustar</button>
+        <select id="verSel" aria-label="Versión de la lámina" hidden></select>
+        <span class="tools">
+          <button id="cloudBtn" aria-pressed="false" title="Arrastra sobre el plano para dibujar una nube y crear una incidencia">Nube</button>
+          <button id="printBtn" title="Imprimir o descargar esta lámina">Imprimir</button>
+          <button id="zOut" aria-label="Alejar">−</button>
+          <span class="zoom" id="zLbl">—</span>
+          <button id="zIn" aria-label="Acercar">+</button>
+          <button id="zFit">Ajustar</button>
+        </span>
       </div>
       <div class="sheet-area">
         <div class="drawer" id="drawer">
@@ -232,6 +244,7 @@ dialog h3{margin:0 0 12px;font-size:16px;font-weight:600}
           <div class="sheets" id="sheetList"><p class="empty-list">Abre la carpeta del paquete exportado desde Revit: se cargan todas las láminas, el modelo y su manifiesto de una vez.</p></div>
         </div>
         <div class="pdf-scroll" id="pdfScroll">
+          <div class="old-banner" id="oldBanner" hidden><span id="oldTxt"></span> <button type="button" id="goCurrent">Ver la vigente</button></div>
           <div class="empty" id="pdfEmpty"><span>Elige una lámina en la lista. Haz clic en una vista para ir a ese punto del modelo. Ctrl + rueda para hacer zoom.</span></div>
           <div class="stage-wrap" id="wrap" hidden>
             <div class="stage" id="stage"><canvas id="cv"></canvas><svg id="ov" xmlns="http://www.w3.org/2000/svg"></svg></div>
@@ -1695,7 +1708,7 @@ var CONFIG = {
 var ERR = {sin_sesion:"Inicia sesión para continuar.", sesion_caducada:"Tu sesión ha caducado.", sesion_no_valida:"La sesión no es válida para este visor.",
   sin_permiso:"No tienes permiso para esto en este proyecto.", sin_permiso_estado:"Tu rol no permite ese cambio de estado.",
   proyecto_no_encontrado:"El proyecto no existe o se ha desactivado.", archivo_no_permitido:"Ese archivo no pertenece al proyecto.",
-  incidencia_no_encontrada:"La incidencia ya no existe.", imagen_demasiado_grande:"La captura es demasiado grande.", red:"No hay conexión con el servidor."};
+  incidencia_no_encontrada:"La incidencia ya no existe.", tiempo:"El servidor ha tardado demasiado en responder.", servidor:"El servidor ha devuelto una respuesta no válida.", imagen_demasiado_grande:"La captura es demasiado grande.", red:"No hay conexión con el servidor."};
 function errText(e){ return ERR[e && e.code] || (e && e.message) || "Error inesperado."; }
 
 // ================================================================ sesión (Iniciar sesión con Google)
@@ -1735,14 +1748,35 @@ function ensureToken(){
   });
 }
 function ApiError(code){ this.code = code; this.message = ERR[code] || code; }
-function api(action, params, retried){
+function api(action, params, retried, timeoutMs){
   return ensureToken().then(function(token){
-    return fetch(CONFIG.API_URL, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify({token:token, action:action, params:params || {}})});
-  }).then(function(r){ return r.json(); }, function(){ throw new ApiError("red"); }).then(function(j){
+    var ctl = window.AbortController ? new AbortController() : null, timer = null;
+    if (ctl && timeoutMs) timer = setTimeout(function(){ ctl.abort(); }, timeoutMs);
+    return fetch(CONFIG.API_URL, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, signal:ctl ? ctl.signal : undefined,
+                                  body:JSON.stringify({token:token, action:action, params:params || {}})})
+      .then(function(r){ return r.text(); })
+      .then(function(txt){ clearTimeout(timer); try { return JSON.parse(txt); } catch(e){ throw new ApiError("servidor"); } },
+            function(err){ clearTimeout(timer); throw new ApiError(err && err.name === "AbortError" ? "tiempo" : "red"); });
+  }).then(function(j){
     if (j.ok) return j.data;
-    if ((j.error === "sesion_caducada" || j.error === "sin_sesion") && !retried){ Auth.exp = 0; return api(action, params, true); }
+    if ((j.error === "sesion_caducada" || j.error === "sin_sesion") && !retried){ Auth.exp = 0; return api(action, params, true, timeoutMs); }
     throw new ApiError(j.error);
   });
+}
+// reintentos con espera creciente para fallos pasajeros (red, servidor saturado, tiempo agotado)
+var RETRYABLE = {red:1, tiempo:1, servidor:1, error_interno:1, descarga_fallida:1};
+function apiRetry(action, params, tries, timeoutMs, onRetry){
+  var n = 0;
+  function go(){
+    return api(action, params, false, timeoutMs).catch(function(e){
+      if (++n < tries && RETRYABLE[e.code]){
+        if (onRetry) onRetry(n, e);
+        return new Promise(function(r){ setTimeout(r, 1500 * n); }).then(go);
+      }
+      throw e;
+    });
+  }
+  return go();
 }
 function startSession(){
   api("me").then(function(me){
@@ -1818,7 +1852,8 @@ function downloadRemote(f, onProgress){
   var pr = FileCache.get(key).then(function(hit){
     if (hit){ if (onProgress) onProgress(1); return hit; }
     var gz = !/\.(pdf|crgeo|gz)$/i.test(f.name);
-    return api("chunk", {project:S.project, id:f.id, offset:0, gz:gz}).then(function(first){
+    var retryNote = function(n){ console.warn("reintento " + n + " al descargar " + f.name); var pg = $("progress"); if (pg && /Descargando/.test(pg.textContent) && !/reintentando/.test(pg.textContent)) pg.textContent += " · reintentando…"; };
+    return apiRetry("chunk", {project:S.project, id:f.id, offset:0, gz:gz}, 5, 120000, retryNote).then(function(first){
       var size = first.size, out = new Uint8Array(size), got = 0;
       var place = function(c){
         return b64ToBytes(c.data).then(function(ab){ return c.gz ? gunzip(ab) : ab; }).then(function(ab){
@@ -1830,7 +1865,7 @@ function downloadRemote(f, onProgress){
         var CH = first.chunk || first.length || 6 * 1024 * 1024, offsets = [];
         for (var o = CH; o < size; o += CH) offsets.push(o);
         var next = 0;
-        function worker(){ if (next >= offsets.length) return Promise.resolve(); var off = offsets[next++]; return api("chunk", {project:S.project, id:f.id, offset:off, gz:gz}).then(place).then(worker); }
+        function worker(){ if (next >= offsets.length) return Promise.resolve(); var off = offsets[next++]; return apiRetry("chunk", {project:S.project, id:f.id, offset:off, gz:gz}, 5, 120000, retryNote).then(place).then(worker); }
         var pool = []; for (var w = 0; w < Math.min(6, offsets.length); w++) pool.push(worker());
         return Promise.all(pool);
       }).then(function(){ var buf = out.buffer; return FileCache.put(key, buf).then(function(){ return buf; }); });
@@ -1860,7 +1895,7 @@ function applyRole(){
   $("roleBadge").hidden = !r; $("roleBadge").textContent = {equipo:"Equipo CEL-RAS", agente:"Agente", consulta:"Consulta"}[r] || "";
 }
 function resetWorkspace(){
-  Lib.locs = new Map(); Lib.pdfs = new Map(); Lib.cache.forEach(function(p){ p.then(function(d){ d.destroy(); }).catch(function(){}); }); Lib.cache = new Map();
+  Lib.locs = new Map(); Lib.pdfs = new Map(); Lib.pdfsByName = new Map(); Lib.cache.forEach(function(p){ p.then(function(d){ d.destroy(); }).catch(function(){}); }); Lib.cache = new Map();
   Lib.entries = []; Lib.byNum = new Map(); S.cur = null; S.loc = null; S.page = null; S.manifest = null; S.ifcName = "";
   Issues = []; Sync.since = ""; S.openStats = null; Lib.keyMap = new Map(); resetRevitProps(null); $("wrap").hidden = true; $("pdfEmpty").hidden = false; drawOverlay();
   if (Model){ clearHighlight(); scene.remove(Model.group); Model = null; requestRender(); }
@@ -1879,7 +1914,7 @@ function fetchJsons(code, files, onEach){
     function worker(){
       if (next >= batches.length || S.project !== code) return Promise.resolve();
       var b = batches[next++];
-      return api("json", {project:code, ids:b.map(function(f){ return f.id; })}).then(function(texts){
+      return apiRetry("json", {project:code, ids:b.map(function(f){ return f.id; })}, 4, 120000).then(function(texts){
         b.forEach(function(f){ var t = texts[f.id]; if (t){ FileCache.put(jsonKey(f), t, t.length * 2); onEach(f, t); } });
       }).then(worker);
     }
@@ -1903,7 +1938,7 @@ function openProject(code){
       var n = f.name.toLowerCase();
       if (/_indice\.json$/.test(n)) indices.push(f); else if (/_loc\.json$/.test(n)) locs.push(f);
       else if (/_modelo\.json$/.test(n)) modelos.push(f);
-      else if (n.endsWith(".pdf")) Lib.addPdf(new RemoteFile(f)); else if (n.endsWith(".ifc")) ifcs.push(f);
+      else if (n.endsWith(".pdf")) Lib.addPdf(new RemoteFile(f), f.path || ""); else if (n.endsWith(".ifc")) ifcs.push(f);
       else if (n.endsWith(".crgeo")) geos.push(f);
       else if (/_props\.json\.gz$/.test(n)) propsFiles.push(f);
     });
@@ -1921,9 +1956,9 @@ function openProject(code){
         if (!sh.viewports || !sh.paper) return;
         var pdf = (sh.pdf_file || sh.sheet.number + ".pdf");
         covered.add(f.path + "|" + pdf.toLowerCase());
-        Lib.addLoc(sh, pdf.replace(/\.pdf$/i, "_LOC.json"));
+        Lib.addLoc(sh, pdf.replace(/\.pdf$/i, "_LOC.json"), f.path || "");
       });
-      else if (j.viewports && j.paper) Lib.addLoc(j, f.name);
+      else if (j.viewports && j.paper) Lib.addLoc(j, f.name, f.path || "");
       else if (j.ifc_file && (!S.manifest || (j.generated || "") >= (S.manifest.generated || ""))){
         S.manifest = j; if (j.ifc_coordinate_base === "shared") $("coordBase").value = "shared";
       }
@@ -2025,7 +2060,7 @@ window.addEventListener("drop", function(e){
 function readEntries(entries){
   var out = [];
   function walk(en){
-    if (en.isFile) return new Promise(function(res){ en.file(function(f){ out.push(f); res(); }, function(){ res(); }); });
+    if (en.isFile) return new Promise(function(res){ en.file(function(f){ try { f._path = en.fullPath.replace(/^\//, ""); } catch(e){} out.push(f); res(); }, function(){ res(); }); });
     if (en.isDirectory){
       var rd = en.createReader();
       return new Promise(function(res){
@@ -2050,8 +2085,8 @@ function intake(files){
     var pkgs = [];
     rs.forEach(function(r){
       var d; try { d = JSON.parse(r.t); } catch(e){ toast("«" + r.f.name + "» no es un JSON válido."); return; }
-      if (d.viewports && d.paper) Lib.addLoc(d, r.f.name);
-      else if (d.sheets) d.sheets.forEach(function(sh){ if (sh.viewports && sh.paper) Lib.addLoc(sh, (sh.pdf_file || sh.sheet.number + ".pdf").replace(/\.pdf$/i, "_LOC.json")); });
+      if (d.viewports && d.paper) Lib.addLoc(d, r.f.name, localPath(r.f));
+      else if (d.sheets) d.sheets.forEach(function(sh){ if (sh.viewports && sh.paper) Lib.addLoc(sh, (sh.pdf_file || sh.sheet.number + ".pdf").replace(/\.pdf$/i, "_LOC.json"), localPath(r.f)); });
       else if (d.ifc_file) { if (!S.manifest || (d.generated || "") >= (S.manifest.generated || "")) S.manifest = d; }
       else if (d.issues) pkgs.push(d);
     });
@@ -2077,36 +2112,48 @@ function pickIfc(ifcs){
 }
 
 // ================================================================ biblioteca de láminas
+// Cada publicación vive en su propia carpeta: una lámina publicada N veces tiene N versiones.
+// El PDF de cada versión se busca en la misma carpeta que su localización (JSON o índice).
+function localPath(f){ var p = f.path || f.webkitRelativePath || f._path || ""; return p.indexOf("/") >= 0 && !/\/$/.test(p) ? p.replace(/[^/]*$/, "") : p; }
+function fmtPub(iso){ if (!iso) return ""; var d = new Date(iso); return isNaN(d) ? "" : d.toLocaleString("es-ES", {day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit"}); }
+function fmtPubShort(iso){ if (!iso) return ""; var d = new Date(iso); return isNaN(d) ? "" : d.toLocaleDateString("es-ES", {day:"2-digit", month:"2-digit", year:"2-digit"}); }
 var Lib = {
-  locs:new Map(), pdfs:new Map(), entries:[], byNum:new Map(), cache:new Map(), paramKeys:[],
-  addLoc:function(d, fname){
-    var key = d.sheet.number + "|" + (d.sheet.revision || "");
-    var cur = this.locs.get(key);
-    if (!cur || (d.generated || "") >= (cur.loc.generated || "")) this.locs.set(key, {loc:d, name:fname});
+  locs:new Map(), pdfs:new Map(), pdfsByName:new Map(), entries:[], byNum:new Map(), cache:new Map(), paramKeys:[], keyMap:new Map(),
+  addLoc:function(d, fname, path){
+    path = path || "";
+    var key = d.sheet.number + "|" + path, cur = this.locs.get(key);
+    if (!cur || (d.generated || "") >= (cur.loc.generated || "")) this.locs.set(key, {loc:d, name:fname, path:path});
   },
-  addPdf:function(f){ var k = f.name.toLowerCase(), cur = this.pdfs.get(k); if (!cur || (f.lastModified || 0) >= (cur.lastModified || 0)) this.pdfs.set(k, f); },
-  keyMap:new Map(),
+  addPdf:function(f, path){
+    path = path === undefined ? localPath(f) : path;
+    var name = f.name.toLowerCase(), k = path + "|" + name;
+    this.pdfs.set(k, f);
+    var cur = this.pdfsByName.get(name);
+    if (!cur || (f.lastModified || 0) >= (cur.f.lastModified || 0)) this.pdfsByName.set(name, {f:f, k:k});
+  },
   rebuild:function(includeOrphans){
     if (includeOrphans === undefined) includeOrphans = true;
     var used = new Set(), entries = [], keys = new Set(), self = this;
     this.locs.forEach(function(v, key){
-      var d = v.loc, pf = (d.pdf_file || "").toLowerCase(), file = self.pdfs.get(pf);
-      if (!file){ var base = v.name.replace(/_LOC\.json$/i, "").toLowerCase() + ".pdf"; file = self.pdfs.get(base); if (file) pf = base; }
-      if (file) used.add(pf);
+      var d = v.loc, pf = (d.pdf_file || "").toLowerCase(), k = v.path + "|" + pf, file = self.pdfs.get(k);
+      if (!file){ var base = v.name.replace(/_LOC\.json$/i, "").toLowerCase() + ".pdf"; k = v.path + "|" + base; file = self.pdfs.get(k); }
+      if (!file && pf && self.pdfsByName.has(pf)){ var g = self.pdfsByName.get(pf); file = g.f; k = g.k; }  // paquetes antiguos
+      if (file) used.add(k);
       var params = d.sheet.params || {};
-      Object.keys(params).forEach(function(k){ keys.add(k); });
-      entries.push({key:key, number:d.sheet.number, name:d.sheet.name || "", revision:d.sheet.revision || "", loc:d, file:file || null, params:params});
+      Object.keys(params).forEach(function(x){ keys.add(x); });
+      entries.push({key:key, number:d.sheet.number, name:d.sheet.name || "", revision:d.sheet.revision || "", loc:d, file:file || null,
+                    params:params, path:v.path, published:d.generated || (file && file.modified) || ""});
     });
-    if (includeOrphans) this.pdfs.forEach(function(f, name){
-      if (used.has(name)) return;
-      var nb = f.name.replace(/\.pdf$/i, "");
-      entries.push({key:"pdf|" + name, number:nb, name:"", revision:"", loc:null, file:f, params:{}});
+    if (includeOrphans) this.pdfs.forEach(function(f, k){
+      if (used.has(k)) return;
+      var nb = f.name.replace(/\.pdf$/i, ""), path = k.slice(0, k.lastIndexOf("|"));
+      entries.push({key:"pdf|" + k, number:nb, name:"", revision:"", loc:null, file:f, params:{}, path:path, published:f.modified || ""});
     });
     var byNum = new Map();
     entries.forEach(function(e){ if (!byNum.has(e.number)) byNum.set(e.number, []); byNum.get(e.number).push(e); });
     byNum.forEach(function(list){
-      list.sort(function(a, b){ return natural(a.revision, b.revision) || natural(a.loc ? a.loc.generated || "" : "", b.loc ? b.loc.generated || "" : ""); });
-      list.forEach(function(e, i){ e.current = i === list.length - 1; e.versions = list; });
+      list.sort(function(a, b){ return (a.published < b.published ? -1 : a.published > b.published ? 1 : 0) || natural(a.revision, b.revision); });
+      list.forEach(function(e, i){ e.current = i === list.length - 1; e.versions = list; e.vno = i + 1; });
     });
     this.entries = entries; this.byNum = byNum;
     this.keyMap = new Map(entries.map(function(e){ return [e.key, e]; }));
@@ -2115,6 +2162,12 @@ var Lib = {
   },
   byKey:function(k){ return this.keyMap.get(k) || null; },
   currentOf:function(number){ var l = this.byNum.get(number); return l ? l[l.length - 1] : null; },
+  versionFor:function(ref){
+    var l = this.byNum.get(ref.number); if (!l) return null;
+    if (ref.version !== undefined && ref.version !== null){ var v = l.filter(function(e){ return e.path === ref.version; })[0]; if (v) return v; }
+    var r = l.filter(function(e){ return (e.revision || "") === (ref.revision || ""); });
+    return r.length ? r[r.length - 1] : l[l.length - 1];
+  },
   visibleOrder:function(){ return flatList; },
   doc:function(e){
     var c = this.cache, k = e.key;
@@ -2125,6 +2178,12 @@ var Lib = {
     return pr;
   }
 };
+// ¿la incidencia se creó sobre esta misma versión de la lámina?
+function sameVersion(i, e){
+  if (!i.sheet || !e) return false;
+  if (i.sheet.version !== undefined && i.sheet.version !== null) return i.sheet.version === e.path;
+  return (i.sheet.revision || "") === (e.revision || "");
+}
 pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([$("pdfWorkerSrc").textContent], {type:"text/javascript"}));
 
 function fillGroupBy(){
@@ -2172,6 +2231,7 @@ function renderSheetList(){
       if (!e.current) li.className = "old"; if (!e.loc) li.className += " noloc";
       if (S.cur && S.cur.key === e.key) li.setAttribute("aria-current", "true");
       var a = document.createElement("span"); a.className = "num"; a.textContent = e.number + (e.revision ? " · R" + e.revision : "");
+      if (e.published){ var pb = document.createElement("span"); pb.className = "pub"; pb.textContent = fmtPubShort(e.published) + (e.current && e.versions && e.versions.length > 1 ? " · " + e.versions.length + " versiones" : ""); a.appendChild(pb); }
       var b = document.createElement("span"); b.className = "nm"; b.textContent = e.name || "—"; b.title = e.name;
       li.appendChild(a); li.appendChild(b);
       var n = counts.get(e.number);
@@ -2214,6 +2274,23 @@ function stepSheet(d){
 $("prevSheet").addEventListener("click", function(){ stepSheet(-1); });
 $("nextSheet").addEventListener("click", function(){ stepSheet(1); });
 
+function fillVersions(e){
+  var sel = $("verSel"), list = (e.versions || [e]).slice().reverse();
+  sel.innerHTML = "";
+  list.forEach(function(v){
+    var o = document.createElement("option"); o.value = v.key;
+    o.textContent = "v" + v.vno + (v.revision ? " · R" + v.revision : "") + (v.published ? " · " + fmtPubShort(v.published) : "") + (v.current ? " · vigente" : "");
+    o.title = "Publicada el " + fmtPub(v.published);
+    sel.appendChild(o);
+  });
+  sel.value = e.key; sel.hidden = list.length < 2;
+  var cur = Lib.currentOf(e.number);
+  $("oldBanner").hidden = e.current;
+  if (!e.current && cur) $("oldTxt").textContent = "Estás viendo una versión superada: v" + e.vno + (e.revision ? " · R" + e.revision : "") + " del " + fmtPub(e.published) +
+    ". La vigente es la v" + cur.vno + (cur.revision ? " · R" + cur.revision : "") + " del " + fmtPub(cur.published) + ".";
+}
+$("verSel").addEventListener("change", function(){ var v = Lib.byKey(this.value); if (v) openSheet(v); });
+$("goCurrent").addEventListener("click", function(){ if (S.cur){ var c = Lib.currentOf(S.cur.number); if (c) openSheet(c); } });
 var openSeq = 0;
 function openSheet(e){
   if (!e.file){ toast("Falta el PDF de la lámina " + e.number + " en el paquete."); return Promise.resolve(); }
@@ -2221,7 +2298,8 @@ function openSheet(e){
   S.cur = e; S.loc = e.loc; sharedInv = null;
   S.pickSheet = null; S.modelSheet = null;
   $("sheetTitle").textContent = e.number + (e.name ? " · " + e.name : "") + (e.revision ? " · R" + e.revision : "") + (e.current ? "" : " (superada)");
-  $("sheetTitle").title = $("sheetTitle").textContent;
+  $("sheetTitle").title = $("sheetTitle").textContent + (e.published ? " · publicada el " + fmtPub(e.published) : "");
+  fillVersions(e);
   document.querySelectorAll("#sheetList li[aria-current]").forEach(function(li){ li.removeAttribute("aria-current"); });
   var li = document.querySelector('#sheetList li[data-key="' + CSS.escape(e.key) + '"]');
   if (li){ li.setAttribute("aria-current", "true"); li.scrollIntoView({block:"nearest"}); }
@@ -2341,7 +2419,7 @@ function stampClouds(page, e, font, PDFLib){
     var c = i.cloud_mm, x0 = (c.min[0] - o[0]) / MM_PER_PT, x1 = (c.max[0] - o[0]) / MM_PER_PT;
     var y0 = H - (c.max[1] - o[1]) / MM_PER_PT, y1 = H - (c.min[1] - o[1]) / MM_PER_PT;
     page.drawSvgPath(cloudPath(x0, y0, x1, y1), {x:0, y:H, borderColor:red, borderWidth:1.4});
-    var same = (i.sheet.revision || "") === (e.revision || "");
+    var same = sameVersion(i, e);
     page.drawText(pdfSafe(i.number + (same ? "" : " (R" + (i.sheet.revision || "-") + ")") + " · " + (i.title || "").slice(0, 60)), {x:x0, y:H - y0 + 12, size:7.5, font:font, color:red});
     n++;
   });
@@ -3255,7 +3333,9 @@ function runExportCheck(){
 function renderPkg(){
   var t = $("pkgBox"); t.innerHTML = "";
   var cur = Lib.entries.filter(function(e){ return e.current; });
-  [["Láminas", cur.length + (Lib.entries.length > cur.length ? " vigentes (+" + (Lib.entries.length - cur.length) + " superadas)" : "")],
+  var pubs = new Set(Lib.entries.map(function(e){ return e.path; }));
+  [["Láminas", cur.length + (Lib.entries.length > cur.length ? " vigentes (+" + (Lib.entries.length - cur.length) + " versiones anteriores)" : "")],
+   ["Publicaciones", String(pubs.size)],
    ["Sin localización", String(cur.filter(function(e){ return !e.loc; }).length)],
    ["Modelo", S.ifcName || "pendiente"], ["Manifiesto", S.manifest ? (S.manifest.ifc_file || "sí") : "pendiente"]]
   .concat(S.openStats ? [["Apertura", S.openStats.secs.toLocaleString("es-ES", {maximumFractionDigits:1}) + " s · " + S.openStats.fetched + " descargados, " + S.openStats.cached + " de la caché"]] : [])
@@ -3327,7 +3407,7 @@ function drawClouds(ov){
   Issues.forEach(function(i){
     if (!i.cloud_mm || !i.sheet || i.sheet.number !== S.cur.number) return;
     if (onlyOpen && i.status === "Cerrada") return;
-    var p = cloudPx(i.cloud_mm), col = cssVar(STATUS_VAR[i.status] || "--err"), sameRev = (i.sheet.revision || "") === (S.cur.revision || "");
+    var p = cloudPx(i.cloud_mm), col = cssVar(STATUS_VAR[i.status] || "--err"), sameRev = sameVersion(i, S.cur);
     var a = {d:cloudPath(p[0], p[1], p[2], p[3]), fill:"rgba(0,0,0,0.001)", stroke:col, "stroke-width":draft && draft.id === i.id ? 3 : 2, "data-inc":i.id, style:"cursor:pointer"};
     if (!sameRev) a["stroke-dasharray"] = "5 4";
     svg("path", a, ov);
@@ -3358,7 +3438,7 @@ function newIssueBase(){
   return {id:uid(), number:S.online ? "(nueva)" : nextNumber(), title:"", description:"", assigned:AGENTS[0], priority:"Media", status:"Abierta", due:"", author:S.online && Auth.user ? Auth.user.name : author(),
     created_at:nowIso(), updated_at:nowIso(), project:projectInfo(), sheet:null, cloud_mm:null, view_name:"", model_point_mm:null, camera:null, images:{}, comments:[], _new:true};
 }
-function sheetRef(){ return S.cur ? {number:S.cur.number, name:S.cur.name, revision:S.cur.revision || ""} : null; }
+function sheetRef(e){ e = e || S.cur; return e ? {number:e.number, name:e.name, revision:e.revision || "", published:e.published || "", version:e.path || ""} : null; }
 function cameraState(){ return {position_mm:sceneToInternal(camera.position), target_mm:sceneToInternal(controls.target), view:getViewState()}; }
 function downscale(src, sx, sy, sw, sh, cloudOnCrop, bg){
   var k = Math.min(1, 720 / sw), c = document.createElement("canvas");
@@ -3403,7 +3483,7 @@ $("shotBtn").addEventListener("click", function(){
     var s = f.s, hh = 8; it.sheet = sheetRef(); it.cloud_mm = {min:[s[0]-hh, s[1]-hh], max:[s[0]+hh, s[1]+hh]}; it.view_name = f.v.view.name;
     it.images.sheet = captureSheet(it.cloud_mm);
   } else if (f){
-    var s2 = f.s; it.sheet = {number:f.e.number, name:f.e.name, revision:f.e.revision}; it.cloud_mm = {min:[s2[0]-8, s2[1]-8], max:[s2[0]+8, s2[1]+8]}; it.view_name = f.v.view.name;
+    var s2 = f.s; it.sheet = sheetRef(f.e); it.cloud_mm = {min:[s2[0]-8, s2[1]-8], max:[s2[0]+8, s2[1]+8]}; it.view_name = f.v.view.name;
   }
   openDialog(it);
 });
@@ -3430,8 +3510,9 @@ function openDialog(it){
   $("fPrio").value = it.priority; $("fStatus").value = it.status; $("fDue").value = it.due || ""; $("fComment").value = "";
   var meta = [];
   if (it.sheet){
-    meta.push("Lámina " + it.sheet.number + (it.sheet.revision ? " R" + it.sheet.revision : ""));
-    var cur = Lib.currentOf(it.sheet.number); if (cur && (cur.revision || "") !== (it.sheet.revision || "")) meta.push("vigente R" + (cur.revision || "—"));
+    var made = Lib.versionFor(it.sheet), cur = Lib.currentOf(it.sheet.number);
+    meta.push("Lámina " + it.sheet.number + (it.sheet.revision ? " R" + it.sheet.revision : "") + (made && made.versions && made.versions.length > 1 ? " (v" + made.vno + ")" : ""));
+    if (cur && made && cur !== made && !sameVersion(it, cur)) meta.push("vigente v" + cur.vno + (cur.revision ? " R" + cur.revision : ""));
   }
   if (it.view_name) meta.push("vista " + it.view_name);
   meta.push("creada por " + it.author + " el " + fmtDate(it.created_at));
@@ -3494,12 +3575,10 @@ function goToIssue(it, closeDlg){
   var show = function(){
     if (it.cloud_mm && S.cur && it.sheet && S.cur.number === it.sheet.number){ var c = it.cloud_mm; scrollToSheetPoint([(c.min[0]+c.max[0])/2, (c.min[1]+c.max[1])/2]); }
   };
-  if (it.sheet && (!S.cur || S.cur.number !== it.sheet.number || (S.cur.revision || "") !== (it.sheet.revision || ""))){
-    var exact = Lib.byKey(it.sheet.number + "|" + (it.sheet.revision || "")) || Lib.currentOf(it.sheet.number);
-    if (exact){
-      if (!exact.current) toast("La incidencia se creó sobre R" + (it.sheet.revision || "—") + "; la revisión vigente es R" + (Lib.currentOf(it.sheet.number).revision || "—") + ".");
-      openSheet(exact).then(show);
-    } else toast("La lámina " + it.sheet.number + " no está en el paquete abierto.");
+  if (it.sheet && (!S.cur || S.cur.number !== it.sheet.number || !sameVersion(it, S.cur))){
+    var exact = Lib.versionFor(it.sheet);
+    if (exact){ needSheet(); openSheet(exact).then(show); }
+    else toast("La lámina " + it.sheet.number + " no está en el paquete abierto.");
   } else show();
   if (Model && it.camera){
     if (it.camera.view) setViewState(it.camera.view);
