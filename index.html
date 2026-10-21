@@ -226,7 +226,7 @@ dialog h3{margin:0 0 12px;font-size:16px;font-weight:600}
         <button id="fitModel">Ver todo</button>
       </div>
       <div id="view3d">
-        <div class="empty" id="ifcEmpty"><span>El modelo se carga solo al abrir la carpeta del paquete. Haz clic en un elemento para ver sus propiedades y en qué planos aparece.</span></div>
+        <div class="empty" id="ifcEmpty"><span id="ifcEmptyTxt">Elige un proyecto para cargar su modelo. Haz clic en un elemento para ver sus propiedades y en qué planos aparece.</span></div>
         <div class="bar" id="bar" hidden><i id="barFill"></i></div>
         <div class="progress" id="progress"></div>
         <div class="tool-panel" id="secPanel" hidden>
@@ -1551,7 +1551,15 @@ var handlers = {
     }, function(){ finish(new Array(ids.length), []); });
   },
 
+  // abre el IFC solo para consultar propiedades (la geometría ya está en caché)
+  open: function(m){
+    if (modelID !== null){ try { api.CloseModel(modelID); } catch(e){} modelID = null; }
+    modelID = api.OpenModel(new Uint8Array(m.buffer), {COORDINATE_TO_ORIGIN:false});
+    post({cmd:"opened", rid:m.rid});
+  },
+
   props: function(m){
+    if (modelID === null){ post({cmd:"error", rid:m.rid, message:"sin_modelo"}); return; }
     var line = api.GetLine(modelID, m.id, false);
     var summary = [["Tipo IFC", String(api.GetNameFromTypeCode(line.type))], ["Nombre", val(line.Name)],
                    ["Tipo", val(line.ObjectType)], ["Marca", val(line.Tag)], ["GlobalId", val(line.GlobalId)]]
@@ -1604,7 +1612,7 @@ var CONFIG = {
   CLIENT_ID: "770604666521-8upqiiiccu2jmlp4cc2v3nnv27op8neh.apps.googleusercontent.com",
   ALLOW_LOCAL: false,          // true solo para pruebas internas con carpetas locales
   POLL_MS: 20000,
-  CACHE_MAX_BYTES: 1.5e9
+  CACHE_MAX_BYTES: 3e9
 };
 (function(){
   var q = new URLSearchParams(location.search), api = q.get("api");
@@ -1694,11 +1702,11 @@ var FileCache = {
     return this.p;
   },
   get:function(k){ return this.db().then(function(db){ return new Promise(function(res){ var q = db.transaction("files").objectStore("files").get(k); q.onsuccess = function(){ res(q.result || null); }; q.onerror = function(){ res(null); }; }); }).catch(function(){ return null; }); },
-  put:function(k, buf){
+  put:function(k, buf, size){
     var self = this;
     return this.db().then(function(db){
       var tx = db.transaction(["files", "meta"], "readwrite");
-      tx.objectStore("files").put(buf, k); tx.objectStore("meta").put({size:buf.byteLength, used:Date.now()}, k);
+      tx.objectStore("files").put(buf, k); tx.objectStore("meta").put({size:size || buf.byteLength || 0, used:Date.now()}, k);
       return new Promise(function(res){ tx.oncomplete = res; tx.onerror = res; });
     }).then(function(){ return self.trim(); }).catch(function(){});
   },
@@ -1721,6 +1729,10 @@ var FileCache = {
   },
   clear:function(){ return this.db().then(function(db){ var tx = db.transaction(["files", "meta"], "readwrite"); tx.objectStore("files").clear(); tx.objectStore("meta").clear(); return new Promise(function(res){ tx.oncomplete = res; tx.onerror = res; }); }); }
 };
+function gunzip(ab){
+  if (!window.DecompressionStream) return Promise.reject(new Error("Este navegador no admite descompresión: actualiza Chrome o Edge."));
+  return new Response(new Blob([ab]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+}
 function b64ToBytes(b64){ return fetch("data:application/octet-stream;base64," + b64).then(function(r){ return r.arrayBuffer(); }); }
 function RemoteFile(meta){ this.id = meta.id; this.name = meta.name; this.size = meta.size; this.modified = meta.modified; this.lastModified = Date.parse(meta.modified) || 0; this.path = meta.path || ""; }
 RemoteFile.prototype.arrayBuffer = function(onProgress){ return downloadRemote(this, onProgress); };
@@ -1731,16 +1743,21 @@ function downloadRemote(f, onProgress){
   if (inflight.has(key)) return inflight.get(key).then(function(b){ return b.slice(0); });
   var pr = FileCache.get(key).then(function(hit){
     if (hit){ if (onProgress) onProgress(1); return hit; }
-    return api("chunk", {project:S.project, id:f.id, offset:0}).then(function(first){
+    return api("chunk", {project:S.project, id:f.id, offset:0, gz:true}).then(function(first){
       var size = first.size, out = new Uint8Array(size), got = 0;
-      var place = function(c){ return b64ToBytes(c.data).then(function(ab){ out.set(new Uint8Array(ab), c.offset); got += ab.byteLength; if (onProgress) onProgress(size ? got / size : 1); }); };
+      var place = function(c){
+        return b64ToBytes(c.data).then(function(ab){ return c.gz ? gunzip(ab) : ab; }).then(function(ab){
+          out.set(new Uint8Array(ab), c.offset); got += ab.byteLength; if (onProgress) onProgress(size ? got / size : 1);
+        });
+      };
       return place(first).then(function(){
         if (first.done) return;
-        var CH = 6 * 1024 * 1024, offsets = [];
+        var CH = first.chunk || first.length || 6 * 1024 * 1024, offsets = [];
         for (var o = CH; o < size; o += CH) offsets.push(o);
         var next = 0;
-        function worker(){ if (next >= offsets.length) return Promise.resolve(); var off = offsets[next++]; return api("chunk", {project:S.project, id:f.id, offset:off}).then(place).then(worker); }
-        return Promise.all([worker(), worker(), worker()]);
+        function worker(){ if (next >= offsets.length) return Promise.resolve(); var off = offsets[next++]; return api("chunk", {project:S.project, id:f.id, offset:off, gz:true}).then(place).then(worker); }
+        var pool = []; for (var w = 0; w < Math.min(6, offsets.length); w++) pool.push(worker());
+        return Promise.all(pool);
       }).then(function(){ var buf = out.buffer; return FileCache.put(key, buf).then(function(){ return buf; }); });
     });
   });
@@ -1811,6 +1828,7 @@ function openProject(code){
       var first = Lib.visibleOrder()[0]; if (first) openSheet(first);
       var ifc = pickIfc(ifcs.map(function(f){ return new RemoteFile(f); }));
       if (ifc) loadIfc(ifc);
+      else $("ifcEmptyTxt").textContent = "Este proyecto aún no tiene modelo publicado. Expórtalo desde Revit con «Exportar lámina obra» a la carpeta del visor.";
       return syncIssues(true);
     });
   }).catch(function(e){ toast(errText(e)); $("sheetList").innerHTML = '<p class="empty-list">' + errText(e) + "</p>"; });
@@ -2299,21 +2317,47 @@ function progress(m){
   $("barFill").style.width = Math.round(f * 100) + "%";
   $("progress").textContent = m.phase === "geometry" ? "Leyendo geometría… " + m.i + " / " + m.total : "Leyendo propiedades y plantas…";
 }
-var t0Load = 0;
+var t0Load = 0, ModelReady = null;
+function secs(ms){ return (ms / 1000).toLocaleString("es-ES", {maximumFractionDigits:1}) + " s"; }
+function geoKey(file){
+  var id = S.online ? S.project + "|" + file.id + "|" + file.modified : file.name + "|" + file.size + "|" + file.lastModified;
+  return "geo|" + id + "|v1";
+}
+function finishModel(m, file, timing){
+  buildModel(m); S.ifcName = file.name;
+  $("bar").hidden = true;
+  $("progress").textContent = Model.n.toLocaleString("es-ES") + " elementos · " + Model.parts.length + " materiales · " + timing;
+  indexModel(); fitAll(); runExportCheck(); renderPkg();
+}
 function loadIfc(file){
-  t0Load = performance.now();
+  t0Load = performance.now(); ModelReady = null;
   $("ifcEmpty").hidden = true; $("bar").hidden = false; $("barFill").style.width = "4%";
-  $("progress").textContent = "Preparando el lector IFC…";
-  return file.arrayBuffer(function(f){ $("barFill").style.width = Math.round(4 + f * 30) + "%"; $("progress").textContent = "Descargando el modelo… " + Math.round(f * 100) + " %"; }).then(function(buf){
-    return ifcCall({cmd:"load", buffer:buf}, [buf]);
-  }).then(function(m){
-    buildModel(m); S.ifcName = file.name;
-    $("bar").hidden = true;
-    $("progress").textContent = Model.n.toLocaleString("es-ES") + " elementos · " + Model.parts.length + " materiales · " + ((performance.now() - t0Load)/1000).toFixed(1) + " s";
-    indexModel(); fitAll(); runExportCheck(); renderPkg();
+  $("progress").textContent = "Preparando el modelo…";
+  var key = geoKey(file);
+  return FileCache.get(key).then(function(geo){
+    if (geo){
+      finishModel(geo, file, "desde la caché de este equipo en " + secs(performance.now() - t0Load));
+      // las propiedades se cargan en segundo plano, sin bloquear el modelo
+      ModelReady = file.arrayBuffer().then(function(buf){ return ifcCall({cmd:"open", buffer:buf}, [buf]); });
+      ModelReady.catch(function(){});
+      return;
+    }
+    var t1 = performance.now();
+    return file.arrayBuffer(function(f){ $("barFill").style.width = Math.round(4 + f * 30) + "%"; $("progress").textContent = "Descargando el modelo… " + Math.round(f * 100) + " %"; }).then(function(buf){
+      var tDl = performance.now() - t1, t2 = performance.now(), mb = buf.byteLength / 1048576;
+      $("progress").textContent = "Leyendo el modelo…";
+      var p = ifcCall({cmd:"load", buffer:buf}, [buf]);
+      ModelReady = p;
+      return p.then(function(m){
+        var tParse = performance.now() - t2;
+        var bytes = m.parts.reduce(function(s, q){ return s + q.pos.byteLength + q.nor.byteLength + q.idx.byteLength + q.rE.byteLength * 3; }, 0) + m.bbox.byteLength + m.ids.byteLength;
+        FileCache.put(key, {offset:m.offset, parts:m.parts, ids:m.ids, bbox:m.bbox, types:m.types, tags:m.tags, storeys:m.storeys, storeyOrder:m.storeyOrder}, bytes);
+        finishModel(m, file, mb.toLocaleString("es-ES", {maximumFractionDigits:0}) + " MB · descarga " + secs(tDl) + " · lectura " + secs(tParse));
+      });
+    });
   }).catch(function(err){
     $("bar").hidden = true; $("progress").textContent = "";
-    toast("No se ha podido leer el IFC: " + err.message); $("ifcEmpty").hidden = false;
+    toast("No se ha podido leer el IFC: " + (err.message || err)); $("ifcEmpty").hidden = false;
   });
 }
 
@@ -2493,7 +2537,7 @@ function selectElement(id){
   if (id === null || !Model){ setHighlight(-1); $("elemBox").innerHTML = '<p class="hint">Ningún elemento seleccionado.</p>'; return; }
   setHighlight(Model.index.get(id));
   var box = $("elemBox"); box.innerHTML = '<p class="hint">Leyendo propiedades…</p>';
-  ifcCall({cmd:"props", id:id}).then(function(r){
+  (ModelReady || Promise.resolve()).then(function(){ return ifcCall({cmd:"props", id:id}); }).then(function(r){
     if (S.selectedId !== id) return;
     box.innerHTML = "";
     var t = document.createElement("table"); t.className = "kv";
