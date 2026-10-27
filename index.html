@@ -1934,11 +1934,29 @@ function applyRole(){
 function resetWorkspace(){
   Lib.locs = new Map(); Lib.pdfs = new Map(); Lib.pdfsByName = new Map(); Lib.cache.forEach(function(p){ p.then(function(d){ d.destroy(); }).catch(function(){}); }); Lib.cache = new Map();
   Lib.entries = []; Lib.byNum = new Map(); S.cur = null; S.loc = null; S.page = null; S.manifest = null; S.ifcName = "";
-  Issues = []; Sync.since = ""; S.openStats = null; Lib.keyMap = new Map(); resetRevitProps(null); $("wrap").hidden = true; $("pdfEmpty").hidden = false; drawOverlay();
-  if (Model){ clearHighlight(); scene.remove(Model.group); Model = null; requestRender(); }
+  Issues = []; Sync.since = ""; S.openStats = null; S.pubPending = []; Lib.keyMap = new Map(); resetRevitProps(null); $("wrap").hidden = true; $("pdfEmpty").hidden = false; drawOverlay();
+  if (Model){ disposeModel(); requestRender(); }
   $("ifcEmpty").hidden = false; $("progress").textContent = ""; $("checkBox").innerHTML = '<p class="hint">Se calcula al cargar el IFC con su _MODELO.json.</p>';
 }
 $("projSel").addEventListener("change", function(){ openProject(this.value); });
+// Publicación completa: su marca lista todos sus archivos con tamaño, y todos están presentes.
+// Publicación con señal «en curso» y sin marca: a medias o con errores → se ignora.
+// Carpeta sin marca ni señal: publicación antigua → se usa como siempre.
+function publicationState(files, marks){
+  var have = new Map();
+  files.forEach(function(f){ have.set((f.path || "") + "|" + f.name, f); });
+  var done = new Map(), started = new Set(), bad = new Set(), pending = [];
+  marks.forEach(function(x){
+    if (x.m && x.m.schema === "CR_VisorObra_PUBLICACION_v1") done.set(x.path, x.m);
+    else if (x.m && x.m.schema === "CR_VisorObra_EN_CURSO_v1") started.add(x.path);
+  });
+  done.forEach(function(m, path){
+    var list = m.files || [], missing = list.filter(function(e){ var f = have.get(path + "|" + e.name); return !f || (e.size && f.size && Number(f.size) !== Number(e.size)); });
+    if (missing.length){ bad.add(path); pending.push({path:path, generated:m.generated, missing:missing.length, total:list.length, state:"subiéndose"}); }
+  });
+  started.forEach(function(path){ if (!done.has(path)){ bad.add(path); pending.push({path:path, missing:null, total:null, state:"en curso o con errores"}); } });
+  return {files:files.filter(function(f){ return !bad.has(f.path || ""); }), pending:pending};
+}
 function jsonKey(f){ return "json|" + S.project + "|" + f.id + "|" + f.modified; }
 // JSON del proyecto: primero los guardados en el equipo; los que falten, en lotes paralelos
 function fetchJsons(code, files, onEach){
@@ -1966,6 +1984,13 @@ function openProject(code){
   $("sheetList").innerHTML = '<p class="empty-list">Abriendo el proyecto…</p>';
   return api("open", {project:code}).then(function(d){
     if (S.project !== code) return;
+    // primero, el estado de cada publicación: solo se usan las completas (o las antiguas, sin marcas)
+    var markFiles = d.files.filter(function(f){ return /_visorobra_(publicacion|en_curso)\.json$/i.test(f.name); }), marks = [];
+    return fetchJsons(code, markFiles, function(f, text){ try { marks.push({path:f.path || "", name:f.name, m:JSON.parse(text)}); } catch(e){} }).then(function(){
+    if (S.project !== code) return;
+    var pub = publicationState(d.files, marks);
+    d.files = pub.files; S.pubPending = pub.pending;
+    if (pub.pending.length) toast(pub.pending.length === 1 ? "Hay 1 publicación aún subiéndose o incompleta: se mostrará cuando esté completa." : "Hay " + pub.pending.length + " publicaciones aún subiéndose o incompletas.");
     S.role = d.role; applyRole();
     Issues = d.issues.filter(function(i){ return !i.deleted; });
     Sync.since = d.issues.reduce(function(m, i){ return i.updated_at > m ? i.updated_at : m; }, "");
@@ -1997,13 +2022,32 @@ function openProject(code){
       });
       else if (j.viewports && j.paper) Lib.addLoc(j, f.name, f.path || "");
       else if (j.ifc_file && (!S.manifest || (j.generated || "") >= (S.manifest.generated || ""))){
-        S.manifest = j; if (j.ifc_coordinate_base === "shared") $("coordBase").value = "shared";
+        S.manifest = j; S.manifestPath = f.path || ""; if (j.ifc_coordinate_base === "shared") $("coordBase").value = "shared";
       }
       refresh();
     }
     var ifcStarted = false;
     function startIfc(){
       if (ifcStarted || S.project !== code) return; ifcStarted = true;
+      var man = S.manifest;
+      if (man && man.federation){
+        var mp = S.manifestPath || "", missing = [], list = [];
+        var findIfc = function(name){ return ifcs.filter(function(x){ return (x.path || "") === mp && x.name === name; })[0] || ifcs.filter(function(x){ return x.name === name; })[0]; };
+        var addModel = function(key, name, file, instances){
+          var f = findIfc(file); if (!f){ missing.push(file); return; }
+          var rf = new RemoteFile(f), gp = (rf.id + "_" + String(rf.modified).replace(/\D/g, "") + "_").toLowerCase();
+          var g = geos.filter(function(x){ return x.name.toLowerCase().indexOf(gp) === 0; })[0];
+          list.push({key:key, name:name, file:rf, geo:g ? new RemoteFile(g) : null, instances:instances});
+        };
+        if (man.federation.host) addModel("H", man.federation.host.name, man.federation.host.ifc_file, null);
+        (man.federation.models || []).forEach(function(m){ addModel(m.key, m.name, m.ifc_file, m.instances); });
+        var pf2 = propsFiles.filter(function(f){ return f.name === man.props_file && (f.path || "") === mp; })[0] || propsFiles.filter(function(f){ return f.name === man.props_file; })[0];
+        resetRevitProps(pf2 ? new RemoteFile(pf2) : null);
+        if (missing.length) toast("Faltan " + missing.length + " modelos de la federación en Drive (¿aún subiéndose?).");
+        if (list.length) loadModelSet(list);
+        else $("ifcEmptyTxt").textContent = "Los modelos de la federación no están en Drive todavía.";
+        return;
+      }
       var ifc = pickIfc(ifcs.map(function(f){ return new RemoteFile(f); }));
       if (ifc){
         var prefix = (ifc.id + "_" + String(ifc.modified).replace(/\D/g, "") + "_").toLowerCase();
@@ -2026,6 +2070,7 @@ function openProject(code){
         S.openStats = {secs:(performance.now() - t0) / 1000, cached:r1.cached + r2.cached, fetched:r1.fetched + r2.fetched};
         setTimeout(renderPkg, 200);
       });
+    });
     });
   }).catch(function(e){ toast(errText(e)); $("sheetList").innerHTML = '<p class="empty-list">' + errText(e) + "</p>"; });
 }
@@ -2119,12 +2164,19 @@ function intake(files){
   });
   if (!pdfs.length && !jsons.length && !ifcs.length){ toast("No hay PDF, JSON ni IFC entre los archivos."); return; }
   Promise.all(jsons.map(function(f){ return f.text().then(function(t){ return {f:f, t:t}; }); })).then(function(rs){
-    var pkgs = [];
+    var pkgs = [], localMarks = [];
+    rs.forEach(function(r){ try { var dj = JSON.parse(r.t); if (dj.schema === "CR_VisorObra_PUBLICACION_v1" || dj.schema === "CR_VisorObra_EN_CURSO_v1") localMarks.push({path:localPath(r.f), name:r.f.name, m:dj}); } catch(e){} });
+    var lp = publicationState(files.map(function(f){ return {path:localPath(f), name:f.name, size:f.size}; }), localMarks), badLocal = new Set(lp.pending.map(function(x){ return x.path; }));
+    S.pubPending = lp.pending;
+    rs = rs.filter(function(r){ return !badLocal.has(localPath(r.f)); });
+    pdfs = pdfs.filter(function(f){ return !badLocal.has(localPath(f)); }); ifcs = ifcs.filter(function(f){ return !badLocal.has(localPath(f)); });
+    props = props.filter(function(f){ return !badLocal.has(localPath(f)); });
+    if (lp.pending.length) toast(lp.pending.length + " publicación(es) incompletas no se han cargado.");
     rs.forEach(function(r){
       var d; try { d = JSON.parse(r.t); } catch(e){ toast("«" + r.f.name + "» no es un JSON válido."); return; }
       if (d.viewports && d.paper) Lib.addLoc(d, r.f.name, localPath(r.f));
       else if (d.sheets) d.sheets.forEach(function(sh){ if (sh.viewports && sh.paper) Lib.addLoc(sh, (sh.pdf_file || sh.sheet.number + ".pdf").replace(/\.pdf$/i, "_LOC.json"), localPath(r.f)); });
-      else if (d.ifc_file) { if (!S.manifest || (d.generated || "") >= (S.manifest.generated || "")) S.manifest = d; }
+      else if (d.ifc_file) { if (!S.manifest || (d.generated || "") >= (S.manifest.generated || "")){ S.manifest = d; S.manifestPath = localPath(r.f); } }
       else if (d.issues) pkgs.push(d);
     });
     pdfs.forEach(function(f){ Lib.addPdf(f); });
@@ -2134,6 +2186,14 @@ function intake(files){
     pkgs.forEach(importPackage);
     if (!S.cur){ var first = Lib.visibleOrder()[0]; if (first) openSheet(first); }
     else { var again = Lib.byKey(S.cur.key); if (again) S.cur = again; }
+    if (S.manifest && S.manifest.federation){
+      var fm = S.manifest, lp2 = S.manifestPath || "", llist = [];
+      var lfind = function(name){ return ifcs.filter(function(x){ return localPath(x) === lp2 && x.name === name; })[0] || ifcs.filter(function(x){ return x.name === name; })[0]; };
+      if (fm.federation.host){ var hf = lfind(fm.federation.host.ifc_file); if (hf) llist.push({key:"H", name:fm.federation.host.name, file:hf, geo:null, instances:null}); }
+      (fm.federation.models || []).forEach(function(m){ var f = lfind(m.ifc_file); if (f) llist.push({key:m.key, name:m.name, file:f, geo:null, instances:m.instances}); });
+      resetRevitProps(props.filter(function(f){ return f.name === fm.props_file; })[0] || null);
+      if (llist.length){ loadModelSet(llist); return; }
+    }
     var ifc = pickIfc(ifcs);
     if (ifc){
       var pn = ifc.name.replace(/\.ifc$/i, "_PROPS.json.gz").toLowerCase();
@@ -2369,6 +2429,13 @@ function setMode(mode){
 document.querySelectorAll(".seg button").forEach(function(b){ b.addEventListener("click", function(){ setMode(b.dataset.mode); }); });
 function needSheet(){ if (S.mode === "model") setMode("split"); }
 function needModel(){ if (S.mode === "sheet") setMode("split"); }
+
+// acceso de diagnóstico para las pruebas automáticas: solo existe con un servidor local (?api=http://localhost…)
+if (CONFIG.DEV) window.__crvisor = {
+  get Model(){ return Model; }, get S(){ return S; }, get RevitProps(){ return RevitProps; },
+  entryOf:entryOf, elementBox:elementBox, toScreen:function(v){ return toScreen(v); }, THREE:THREE,
+  get renderer(){ return renderer; }, get camera(){ return camera; }
+};
 
 // ================================================================ impresión y paquetes de impresión
 var PrintSel = new Set();
@@ -3008,23 +3075,6 @@ function geoKey(file){
 function geoBytes(m){
   return m.parts.reduce(function(s, q){ return s + q.pos.byteLength + q.nor.byteLength + q.idx.byteLength + q.rE.byteLength * 3; }, 0) + m.bbox.byteLength + m.ids.byteLength;
 }
-function finishModel(m, file, timing){
-  buildModel(m); S.ifcName = file.name;
-  $("bar").hidden = true;
-  $("progress").textContent = Model.n.toLocaleString("es-ES") + " elementos · " + Model.parts.length + " materiales · " + timing;
-  indexModel(); fitAll(); runExportCheck(); renderPkg();
-}
-// las propiedades necesitan el IFC abierto en el lector: solo se descarga si alguien selecciona un elemento
-function ensureProps(){
-  if (ModelReady) return ModelReady;
-  if (!PropsFile) return Promise.reject(new Error("sin_modelo"));
-  var f = PropsFile;
-  ModelReady = f.arrayBuffer(function(x){ var eb = $("elemBox"); if (eb && x < 1) eb.innerHTML = '<p class="hint">Cargando las propiedades del modelo (solo la primera vez)… ' + Math.round(x * 100) + ' %</p>'; })
-    .then(function(buf){ return ifcCall({cmd:"open", buffer:buf}, [buf]); });
-  ModelReady.catch(function(){ ModelReady = null; });
-  return ModelReady;
-}
-
 // ---- formato .crgeo: «CRGEO1» + cabecera JSON + búferes alineados a 8 bytes, todo en gzip
 var GEO_MAGIC = "CRGEO1\0\0";
 function align8(n){ return (n + 7) & ~7; }
@@ -3070,7 +3120,7 @@ function blobToB64(blob){
   return new Promise(function(res, rej){ var r = new FileReader(); r.onload = function(){ res(String(r.result).split(",")[1] || ""); }; r.onerror = function(){ rej(r.error); }; r.readAsDataURL(blob); });
 }
 function uploadGeo(file, m){
-  var code = S.project, note = function(txt){ if (S.project === code && Model) $("progress").textContent = S.modelTiming + (txt ? " · " + txt : ""); };
+  var code = S.project, note = function(txt){ if (S.project === code && Model) $("progress").textContent = modelSummary() + (txt ? " · " + txt : ""); };
   return encodeGeo(m, file).then(function(blob){
     return api("geoStart", {project:code, ifcId:file.id, size:blob.size}).then(function(st){
       if (st.exists) return false;
@@ -3087,119 +3137,226 @@ function uploadGeo(file, m){
   }).catch(function(e){ note(""); console.warn("versión procesada:", e); });
 }
 
-function loadIfc(file, geoFile){
-  t0Load = performance.now(); ModelReady = null; PropsFile = file;
-  $("ifcEmpty").hidden = true; $("bar").hidden = false; $("barFill").style.width = "4%";
-  $("progress").textContent = "Preparando el modelo…";
-  var key = geoKey(file);
+function modelSummary(){
+  if (!Model) return "";
+  var copies = Model.models.reduce(function(s, md){ return s + md.instances.length; }, 0);
+  return Model.n.toLocaleString("es-ES") + " elementos" +
+    (Model.models.length > 1 || copies > 1 ? " · " + Model.models.length + (Model.models.length === 1 ? " modelo, " : " modelos, ") + copies.toLocaleString("es-ES") + " copias" : "") + " · " + (S.modelTiming || "");
+}
+function finishModels(list, timing){
+  buildModel(list);
+  S.ifcName = list.map(function(x){ return x.file.name; }).join(", ");
+  $("bar").hidden = true;
+  $("progress").textContent = modelSummary();
+  indexModel(); fitAll(); runExportCheck(); renderPkg();
+}
+// las propiedades IFC necesitan el IFC de ese modelo abierto en el lector: solo se descarga si alguien las pide
+var OpenProps = -1;
+function ensureProps(mi){
+  var md = Model && Model.models[mi || 0];
+  if (!md) return Promise.reject(new Error("sin_modelo"));
+  if (ModelReady && OpenProps === (mi || 0)) return ModelReady;
+  var f = md.file; OpenProps = mi || 0;
+  ModelReady = f.arrayBuffer(function(x){ var eb = $("elemBox"); if (eb && x < 1) eb.innerHTML = '<p class="hint">Cargando las propiedades del modelo (solo la primera vez)… ' + Math.round(x * 100) + ' %</p>'; })
+    .then(function(buf){ return ifcCall({cmd:"open", buffer:buf}, [buf]); });
+  ModelReady.catch(function(){ ModelReady = null; OpenProps = -1; });
+  return ModelReady;
+}
+var IFC_BROWSER_MAX = 1.5 * 1073741824;
+function loadOne(file, geoFile, label, idx){
+  var key = geoKey(file), pre = label ? label + " · " : "";
   var cacheGeo = function(m){ FileCache.put(key, {offset:m.offset, parts:m.parts, ids:m.ids, bbox:m.bbox, types:m.types, tags:m.tags, storeys:m.storeys, storeyOrder:m.storeyOrder}, geoBytes(m)); };
   var fromIfc = function(){
+    if (file.size && file.size > IFC_BROWSER_MAX)
+      return Promise.reject(new Error("el IFC «" + file.name + "» ocupa " + (file.size / 1073741824).toLocaleString("es-ES", {maximumFractionDigits:1}) +
+        " GB y ningún navegador puede abrirlo. Publícalo con la federación de vínculos o con una vista 3D más ligera."));
     var t1 = performance.now();
-    return file.arrayBuffer(function(f){ $("barFill").style.width = Math.round(4 + f * 30) + "%"; $("progress").textContent = "Descargando el modelo… " + Math.round(f * 100) + " %"; }).then(function(buf){
+    return file.arrayBuffer(function(f){ $("barFill").style.width = Math.round(4 + f * 30) + "%"; $("progress").textContent = pre + "Descargando el modelo… " + Math.round(f * 100) + " %"; }).then(function(buf){
       var tDl = performance.now() - t1, t2 = performance.now(), size = buf.byteLength;
-      $("progress").textContent = "Procesando el modelo (solo la primera vez)…";
+      $("progress").textContent = pre + "Procesando el modelo (solo la primera vez)…";
       var p = ifcCall({cmd:"load", buffer:buf}, [buf]);
-      ModelReady = p;
+      ModelReady = p; OpenProps = idx;
       return p.then(function(m){
         cacheGeo(m);
-        S.modelTiming = "IFC " + mbs(size) + " · descarga " + secs(tDl) + " · procesado " + secs(performance.now() - t2);
-        finishModel(m, file, S.modelTiming);
         if (S.online && S.role === "equipo" && !geoFile && window.CompressionStream) uploadGeo(file, m);
+        return {m:m, how:"IFC " + mbs(size) + " · descarga " + secs(tDl) + " · procesado " + secs(performance.now() - t2), kind:"ifc"};
       });
     });
   };
   return FileCache.get(key).then(function(geo){
-    if (geo){ S.modelTiming = "desde la caché de este equipo en " + secs(performance.now() - t0Load); finishModel(geo, file, S.modelTiming); return; }
+    if (geo) return {m:geo, how:"desde la caché de este equipo", kind:"cache"};
     if (!geoFile) return fromIfc();
     var t1 = performance.now();
-    return geoFile.arrayBuffer(function(f){ $("barFill").style.width = Math.round(4 + f * 80) + "%"; $("progress").textContent = "Descargando la versión procesada… " + Math.round(f * 100) + " %"; })
+    return geoFile.arrayBuffer(function(f){ $("barFill").style.width = Math.round(4 + f * 80) + "%"; $("progress").textContent = pre + "Descargando la versión procesada… " + Math.round(f * 100) + " %"; })
       .then(function(ab){ var size = ab.byteLength; return decodeGeo(ab).then(function(m){ return {m:m, size:size}; }); })
       .then(function(r){
         if (r.m.src && r.m.src.id !== file.id) throw new Error("la versión procesada no corresponde al IFC");
         cacheGeo(r.m);
-        S.modelTiming = "versión procesada " + mbs(r.size) + " · " + secs(performance.now() - t1);
-        finishModel(r.m, file, S.modelTiming);
+        return {m:r.m, how:"versión procesada " + mbs(r.size) + " · " + secs(performance.now() - t1), kind:"geo"};
       })
       .catch(function(e){ console.warn("versión procesada no utilizable, se procesa el IFC:", e); return fromIfc(); });
+  });
+}
+// list: [{key, name, file, geo, instances}] → lee cada modelo una vez y monta la federación
+function loadModelSet(list){
+  t0Load = performance.now(); ModelReady = null; OpenProps = -1;
+  $("ifcEmpty").hidden = true; $("bar").hidden = false; $("barFill").style.width = "4%";
+  $("progress").textContent = "Preparando el modelo…";
+  var out = [];
+  return list.reduce(function(p, it, i){
+    return p.then(function(){
+      var label = list.length > 1 ? "Modelo " + (i + 1) + " de " + list.length + " («" + it.name + "»)" : "";
+      return loadOne(it.file, it.geo, label, i).then(function(r){ out.push({key:it.key, name:it.name, file:it.file, instances:it.instances, m:r.m, how:r.how, kind:r.kind}); });
+    });
+  }, Promise.resolve()).then(function(){
+    var total = secs(performance.now() - t0Load);
+    if (out.length === 1) S.modelTiming = out[0].kind === "cache" ? "desde la caché de este equipo en " + total : out[0].how;
+    else {
+      var k = {cache:0, geo:0, ifc:0}; out.forEach(function(x){ k[x.kind]++; });
+      S.modelTiming = "en " + total + " (" + [k.cache ? k.cache + " de la caché" : "", k.geo ? k.geo + " versiones procesadas" : "", k.ifc ? k.ifc + " IFC procesados" : ""].filter(Boolean).join(", ") + ")";
+    }
+    finishModels(out, S.modelTiming);
   }).catch(function(err){
     $("bar").hidden = true; $("progress").textContent = "";
     toast("No se ha podido leer el modelo: " + (err.message || err)); $("ifcEmpty").hidden = false;
   });
 }
+function loadIfc(file, geoFile){ return loadModelSet([{key:"", name:file.name, file:file, geo:geoFile || null, instances:null}]); }
 
-// ================================================================ modelo fusionado
-var Model = null, Highlight = [];
-function buildModel(m){
-  if (Model){ clearHighlight(); scene.remove(Model.group); Model.parts.forEach(function(p){ p.geom.dispose(); }); Model.mats.forEach(function(x){ x.dispose(); }); }
-  var group = new THREE.Group(); group.position.set(m.offset[0], m.offset[1], m.offset[2]);
-  var n = m.ids.length;
-  var M = {group:group, offset:new THREE.Vector3(m.offset[0], m.offset[1], m.offset[2]), ids:m.ids, bbox:m.bbox, n:n,
-           index:new Map(), ranges:new Array(n), visible:new Uint8Array(n).fill(1), parts:[], mats:[],
-           types:m.types, tags:m.tags, storeys:m.storeys, storeyOrder:m.storeyOrder, bounds:new THREE.Box3()};
-  for (var i = 0; i < n; i++){ M.index.set(m.ids[i], i); M.ranges[i] = []; }
-  m.parts.forEach(function(p, pi){
-    var geom = new THREE.BufferGeometry();
-    geom.setAttribute("position", new THREE.BufferAttribute(p.pos, 3));
-    geom.setAttribute("normal", new THREE.BufferAttribute(p.nor, 3, p.nor instanceof Int8Array));
-    var draw = new Uint32Array(p.idx.length); draw.set(p.idx);
-    var ia = new THREE.BufferAttribute(draw, 1); ia.setUsage(THREE.DynamicDrawUsage); geom.setIndex(ia);
-    geom.computeBoundingSphere();
-    var c = p.color, transp = c[3] < 0.99;
-    var mat = new THREE.MeshLambertMaterial({color:new THREE.Color(c[0], c[1], c[2]), transparent:transp, opacity:c[3], side:THREE.DoubleSide, depthWrite:!transp});
-    var mesh = new THREE.Mesh(geom, mat); if (transp) mesh.renderOrder = 1; mesh.matrixAutoUpdate = false;
-    group.add(mesh);
-    for (var r = 0; r < p.rE.length; r++) M.ranges[p.rE[r]].push(pi, p.rS[r], p.rC[r]);
-    M.parts.push({geom:geom, mesh:mesh, full:p.idx, draw:draw, pos:p.pos, rE:p.rE, rS:p.rS, rC:p.rC});
-    M.mats.push(mat);
+// ================================================================ modelo federado: varios modelos, cada uno con sus copias
+// Cada modelo (anfitrión o vínculo) se lee una vez y se dibuja con instancias de GPU en cada posición.
+// Un «elemento» de la escena es una entrada = (modelo, copia, elemento del modelo).
+var Model = null, Highlight = [], ModelMats = [];
+var MIRROR = new THREE.Matrix4().makeScale(-1, 1, 1);
+var Cm = new THREE.Matrix4().set(0.001,0,0,0, 0,0,0.001,0, 0,-0.001,0,0, 0,0,0,1), CmInv = Cm.clone().invert();
+function instMatrix(t){
+  if (!t) return new THREE.Matrix4();
+  var bx = t.basis_x, by = t.basis_y, bz = t.basis_z, o = t.origin_mm;
+  var T = new THREE.Matrix4().set(bx[0],by[0],bz[0],o[0], bx[1],by[1],bz[1],o[1], bx[2],by[2],bz[2],o[2], 0,0,0,1);
+  return Cm.clone().multiply(T).multiply(CmInv);   // de coordenadas internas del vínculo a las del anfitrión, en la escena
+}
+function disposeModel(){
+  if (!Model) return;
+  clearHighlight(); scene.remove(Model.root);
+  Model.models.forEach(function(md){ md.parts.forEach(function(p){ p.geom.dispose(); if (p.mesh.dispose) p.mesh.dispose(); }); });
+  ModelMats.forEach(function(x){ x.dispose(); }); ModelMats = [];
+  Model = null;
+}
+function buildModel(list){
+  disposeModel();
+  var root = new THREE.Group(), M = {root:root, models:[], n:0, bounds:new THREE.Box3(), single:false, parts:[]};
+  list.forEach(function(it, mi){
+    var m = it.m, n = m.ids.length;
+    var insts = (it.instances && it.instances.length ? it.instances : [{id:0, name:"", transform:null}]).map(function(ins){
+      var W = instMatrix(ins.transform), F = W.clone().multiply(new THREE.Matrix4().makeTranslation(m.offset[0], m.offset[1], m.offset[2]));
+      return {id:ins.id, name:ins.name || "", W:W, F:F, Finv:F.clone().invert(), nrm:new THREE.Matrix3().getNormalMatrix(F)};
+    });
+    var md = {key:it.key || "", name:it.name || "", file:it.file, m:m, n:n, ids:m.ids, types:m.types, tags:m.tags, storeys:m.storeys,
+              storeyOrder:m.storeyOrder || [], ranges:new Array(n), visible:new Uint8Array(n).fill(1), parts:[], instances:insts, first:M.n};
+    for (var i = 0; i < n; i++) md.ranges[i] = [];
+    m.parts.forEach(function(p, pi){
+      var geom = new THREE.BufferGeometry();
+      geom.setAttribute("position", new THREE.BufferAttribute(p.pos, 3));
+      geom.setAttribute("normal", new THREE.BufferAttribute(p.nor, 3, p.nor instanceof Int8Array));
+      var draw = new Uint32Array(p.idx.length); draw.set(p.idx);
+      var ia = new THREE.BufferAttribute(draw, 1); ia.setUsage(THREE.DynamicDrawUsage); geom.setIndex(ia);
+      geom.computeBoundingSphere();
+      var c = p.color, transp = c[3] < 0.99;
+      var mat = new THREE.MeshLambertMaterial({color:new THREE.Color(c[0], c[1], c[2]), transparent:transp, opacity:c[3], side:THREE.DoubleSide, depthWrite:!transp});
+      ModelMats.push(mat);
+      // copias simétricas aparte: la malla lleva una reflexión propia para que Three.js invierta el sentido de las caras
+      var meshes = [];
+      [false, true].forEach(function(mirror){
+        var sel = insts.filter(function(ins){ return (ins.F.determinant() < 0) === mirror; });
+        if (!sel.length) return;
+        var mesh = new THREE.InstancedMesh(geom, mat, sel.length), tmpM = new THREE.Matrix4();
+        if (mirror) mesh.matrix.copy(MIRROR);
+        sel.forEach(function(ins, k){ mesh.setMatrixAt(k, mirror ? tmpM.copy(MIRROR).multiply(ins.F) : ins.F); });
+        mesh.instanceMatrix.needsUpdate = true; mesh.frustumCulled = false; mesh.matrixAutoUpdate = false;
+        if (transp) mesh.renderOrder = 1;
+        root.add(mesh); meshes.push(mesh);
+      });
+      var mesh = {visible:true, meshes:meshes, dispose:function(){ meshes.forEach(function(x){ x.dispose && x.dispose(); }); }};
+      Object.defineProperty(mesh, "visible", {set:function(v){ meshes.forEach(function(x){ x.visible = v; }); }, get:function(){ return meshes.some(function(x){ return x.visible; }); }});
+      for (var r = 0; r < p.rE.length; r++) md.ranges[p.rE[r]].push(pi, p.rS[r], p.rC[r]);
+      md.parts.push({geom:geom, mesh:mesh, full:p.idx, draw:draw, pos:p.pos, rE:p.rE, rS:p.rS, rC:p.rC});
+      M.parts.push(pi);
+    });
+    M.n += n * insts.length;
+    M.models.push(md);
   });
-  var B = m.bbox, mn = new THREE.Vector3(Infinity, Infinity, Infinity), mx = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
-  for (var e = 0; e < n; e++){
-    if (B[e*6] === Infinity) continue;
-    mn.x = Math.min(mn.x, B[e*6]); mn.y = Math.min(mn.y, B[e*6+1]); mn.z = Math.min(mn.z, B[e*6+2]);
-    mx.x = Math.max(mx.x, B[e*6+3]); mx.y = Math.max(mx.y, B[e*6+4]); mx.z = Math.max(mx.z, B[e*6+5]);
-  }
-  M.bounds.set(mn, mx);
-  scene.add(group); group.updateMatrixWorld(true);
+  M.single = M.models.length === 1 && M.models[0].instances.length === 1;
+  // cajas de cada entrada en coordenadas de la escena (centro y semiejes transformados)
+  var N = M.n; M.eModel = new Uint16Array(N); M.eInst = new Uint32Array(N); M.eElem = new Uint32Array(N); M.bbox = new Float64Array(N * 6);
+  var mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+  M.models.forEach(function(md, mi){
+    var B = md.m.bbox, e = md.first;
+    md.instances.forEach(function(ins, k){
+      var w = ins.W.elements;
+      for (var i = 0; i < md.n; i++, e++){
+        M.eModel[e] = mi; M.eInst[e] = k; M.eElem[e] = i;
+        var o = i * 6, q = e * 6;
+        if (B[o] === Infinity){ M.bbox[q] = M.bbox[q+1] = M.bbox[q+2] = Infinity; M.bbox[q+3] = M.bbox[q+4] = M.bbox[q+5] = -Infinity; continue; }
+        var cx = (B[o] + B[o+3]) / 2, cy = (B[o+1] + B[o+4]) / 2, cz = (B[o+2] + B[o+5]) / 2, hx = (B[o+3] - B[o]) / 2, hy = (B[o+4] - B[o+1]) / 2, hz = (B[o+5] - B[o+2]) / 2;
+        var X = w[0]*cx + w[4]*cy + w[8]*cz + w[12], Y = w[1]*cx + w[5]*cy + w[9]*cz + w[13], Z = w[2]*cx + w[6]*cy + w[10]*cz + w[14];
+        var HX = Math.abs(w[0])*hx + Math.abs(w[4])*hy + Math.abs(w[8])*hz, HY = Math.abs(w[1])*hx + Math.abs(w[5])*hy + Math.abs(w[9])*hz, HZ = Math.abs(w[2])*hx + Math.abs(w[6])*hy + Math.abs(w[10])*hz;
+        M.bbox[q] = X - HX; M.bbox[q+1] = Y - HY; M.bbox[q+2] = Z - HZ; M.bbox[q+3] = X + HX; M.bbox[q+4] = Y + HY; M.bbox[q+5] = Z + HZ;
+        if (X - HX < mn[0]) mn[0] = X - HX; if (Y - HY < mn[1]) mn[1] = Y - HY; if (Z - HZ < mn[2]) mn[2] = Z - HZ;
+        if (X + HX > mx[0]) mx[0] = X + HX; if (Y + HY > mx[1]) mx[1] = Y + HY; if (Z + HZ > mx[2]) mx[2] = Z + HZ;
+      }
+    });
+  });
+  M.bounds.set(new THREE.Vector3(mn[0], mn[1], mn[2]), new THREE.Vector3(mx[0], mx[1], mx[2]));
+  scene.add(root); root.updateMatrixWorld(true);
   Model = M; S.selectedId = null; tagMap = null;
   requestRender();
 }
+function entryOf(mi, k, i){ var md = Model.models[mi]; return md.first + k * md.n + i; }
+// clave de visibilidad: un elemento de un vínculo se oculta en todas sus copias
+function elemKey(mi, i){ var md = Model.models[mi]; return Model.single ? String(md.ids[i]) : (md.key || "H") + ":" + md.ids[i]; }
+function entryModel(e){ return Model.models[Model.eModel[e]]; }
 function applyDrawLists(){
-  Model.parts.forEach(function(p){
-    var w = 0, V = Model.visible;
-    for (var r = 0; r < p.rE.length; r++){
-      if (!V[p.rE[r]]) continue;
-      var s = p.rS[r], c = p.rC[r];
-      p.draw.set(p.full.subarray(s, s + c), w); w += c;
-    }
-    p.geom.setDrawRange(0, w);
-    p.mesh.visible = w > 0;
-    var ia = p.geom.index; ia.updateRange.offset = 0; ia.updateRange.count = w; ia.needsUpdate = true;
+  Model.models.forEach(function(md){
+    var V = md.visible;
+    md.parts.forEach(function(p){
+      var w = 0;
+      for (var r = 0; r < p.rE.length; r++){
+        if (!V[p.rE[r]]) continue;
+        var s = p.rS[r], c = p.rC[r];
+        p.draw.set(p.full.subarray(s, s + c), w); w += c;
+      }
+      p.geom.setDrawRange(0, w);
+      p.mesh.visible = w > 0;
+      var ia = p.geom.index; ia.updateRange.offset = 0; ia.updateRange.count = w; ia.needsUpdate = true;
+    });
   });
   requestRender();
 }
-function elementBox(index){
-  var B = Model.bbox, o = index * 6;
+function elementBox(e){
+  var B = Model.bbox, o = e * 6;
   return new THREE.Box3(new THREE.Vector3(B[o], B[o+1], B[o+2]), new THREE.Vector3(B[o+3], B[o+4], B[o+5]));
 }
-// selección: descarte rápido por cajas y prueba de triángulos solo en los candidatos
+// selección: descarte por cajas en la escena y prueba de triángulos en las coordenadas de cada copia
 function pick(origin, dir, useClip){
   if (!Model) return null;
-  var off = Model.offset, ox = origin.x - off.x, oy = origin.y - off.y, oz = origin.z - off.z, dx = dir.x, dy = dir.y, dz = dir.z;
-  var ix = 1/dx, iy = 1/dy, iz = 1/dz, B = Model.bbox, V = Model.visible, cand = [];
-  for (var i = 0; i < Model.n; i++){
-    if (!V[i]) continue;
-    var o = i*6, t1 = (B[o]-off.x-ox)*ix, t2 = (B[o+3]-off.x-ox)*ix, tmin = Math.min(t1,t2), tmax = Math.max(t1,t2);
-    t1 = (B[o+1]-off.y-oy)*iy; t2 = (B[o+4]-off.y-oy)*iy; tmin = Math.max(tmin, Math.min(t1,t2)); tmax = Math.min(tmax, Math.max(t1,t2));
-    t1 = (B[o+2]-off.z-oz)*iz; t2 = (B[o+5]-off.z-oz)*iz; tmin = Math.max(tmin, Math.min(t1,t2)); tmax = Math.min(tmax, Math.max(t1,t2));
-    if (tmax >= Math.max(tmin, 0)) cand.push([Math.max(tmin, 0), i]);
+  var ix = 1/dir.x, iy = 1/dir.y, iz = 1/dir.z, B = Model.bbox, cand = [], ox = origin.x, oy = origin.y, oz = origin.z;
+  for (var e = 0; e < Model.n; e++){
+    if (!Model.models[Model.eModel[e]].visible[Model.eElem[e]]) continue;
+    var o = e*6, t1 = (B[o]-ox)*ix, t2 = (B[o+3]-ox)*ix, tmin = Math.min(t1,t2), tmax = Math.max(t1,t2);
+    t1 = (B[o+1]-oy)*iy; t2 = (B[o+4]-oy)*iy; tmin = Math.max(tmin, Math.min(t1,t2)); tmax = Math.min(tmax, Math.max(t1,t2));
+    t1 = (B[o+2]-oz)*iz; t2 = (B[o+5]-oz)*iz; tmin = Math.max(tmin, Math.min(t1,t2)); tmax = Math.min(tmax, Math.max(t1,t2));
+    if (tmax >= Math.max(tmin, 0)) cand.push([Math.max(tmin, 0), e]);
   }
   cand.sort(function(a, b){ return a[0] - b[0]; });
-  var clip = useClip && renderer.clippingPlanes.length, best = Infinity, bi = -1, bn = [0,0,0], tmp = new THREE.Vector3(), bP = null, ba = 0, bb = 0, bd = 0;
+  var clip = useClip && renderer.clippingPlanes.length, best = Infinity, be = -1, bn = [0,0,0], tmp = new THREE.Vector3();
+  var bP = null, ba = 0, bb = 0, bd = 0, bIns = null, lo = new THREE.Vector3(), ld = new THREE.Vector3();
   for (var c = 0; c < cand.length; c++){
     if (cand[c][0] > best) break;
-    var ei = cand[c][1], R = Model.ranges[ei];
+    var en = cand[c][1], md = Model.models[Model.eModel[en]], ins = md.instances[Model.eInst[en]], R = md.ranges[Model.eElem[en]];
+    lo.copy(origin).applyMatrix4(ins.Finv); ld.copy(origin).add(dir).applyMatrix4(ins.Finv).sub(lo).normalize();
+    var lox = lo.x, loy = lo.y, loz = lo.z, dx = ld.x, dy = ld.y, dz = ld.z;
     for (var r = 0; r < R.length; r += 3){
-      var part = Model.parts[R[r]], I = part.full, P = part.pos, end = R[r+1] + R[r+2];
+      var part = md.parts[R[r]], I = part.full, P = part.pos, end = R[r+1] + R[r+2];
       for (var k = R[r+1]; k < end; k += 3){
         var a = I[k]*3, b = I[k+1]*3, d = I[k+2]*3;
         var ax = P[a], ay = P[a+1], az = P[a+2];
@@ -3207,38 +3364,38 @@ function pick(origin, dir, useClip){
         var px = dy*e2z - dz*e2y, py = dz*e2x - dx*e2z, pz = dx*e2y - dy*e2x;
         var det = e1x*px + e1y*py + e1z*pz;
         if (det > -1e-12 && det < 1e-12) continue;
-        var inv = 1/det, tx = ox-ax, ty = oy-ay, tz = oz-az;
+        var inv = 1/det, tx = lox-ax, ty = loy-ay, tz = loz-az;
         var u = (tx*px + ty*py + tz*pz) * inv; if (u < 0 || u > 1) continue;
         var qx = ty*e1z - tz*e1y, qy = tz*e1x - tx*e1z, qz = tx*e1y - ty*e1x;
         var v = (dx*qx + dy*qy + dz*qz) * inv; if (v < 0 || u + v > 1) continue;
-        var t = (e2x*qx + e2y*qy + e2z*qz) * inv;
+        var t = (e2x*qx + e2y*qy + e2z*qz) * inv;   // las copias son movimientos rígidos: t es el mismo en la escena
         if (t <= 1e-6 || t >= best) continue;
-        if (clip){ tmp.set(origin.x + dx*t, origin.y + dy*t, origin.z + dz*t); if (!passesClip(tmp)) continue; }
-        best = t; bi = ei; bP = P; ba = a; bb = b; bd = d;
+        if (clip){ tmp.set(ox + dir.x*t, oy + dir.y*t, oz + dir.z*t); if (!passesClip(tmp)) continue; }
+        best = t; be = en; bP = P; ba = a; bb = b; bd = d; bIns = ins;
         bn[0] = e1y*e2z - e1z*e2y; bn[1] = e1z*e2x - e1x*e2z; bn[2] = e1x*e2y - e1y*e2x;
       }
     }
   }
-  if (bi < 0) return null;
-  var normal = new THREE.Vector3(bn[0], bn[1], bn[2]).normalize();
+  if (be < 0) return null;
+  var normal = new THREE.Vector3(bn[0], bn[1], bn[2]).applyMatrix3(bIns.nrm).normalize();
   if (normal.dot(dir) > 0) normal.negate();
-  var tv = function(k){ return new THREE.Vector3(bP[k] + off.x, bP[k+1] + off.y, bP[k+2] + off.z); };
-  return {id:Model.ids[bi], index:bi, point:new THREE.Vector3(origin.x + dx*best, origin.y + dy*best, origin.z + dz*best), normal:normal, tri:[tv(ba), tv(bb), tv(bd)]};
+  var tv = function(q){ return new THREE.Vector3(bP[q], bP[q+1], bP[q+2]).applyMatrix4(bIns.F); };
+  return {id:be, index:be, point:new THREE.Vector3(ox + dir.x*best, oy + dir.y*best, oz + dir.z*best), normal:normal, tri:[tv(ba), tv(bb), tv(bd)]};
 }
 function clearHighlight(){ Highlight.forEach(function(me){ me.parent && me.parent.remove(me); }); Highlight = []; }
-function setHighlight(index){
+function setHighlight(e){
   clearHighlight();
-  if (index < 0 || !Model) return;
-  var R = Model.ranges[index];
+  if (e === null || e === undefined || e < 0 || !Model) return;
+  var md = entryModel(e), ins = md.instances[Model.eInst[e]], R = md.ranges[Model.eElem[e]];
   for (var r = 0; r < R.length; r += 3){
-    var part = Model.parts[R[r]], g = new THREE.BufferGeometry();
+    var part = md.parts[R[r]], g = new THREE.BufferGeometry();
     g.setAttribute("position", part.geom.getAttribute("position"));
     g.setAttribute("normal", part.geom.getAttribute("normal"));
     g.setIndex(new THREE.BufferAttribute(part.full.slice(R[r+1], R[r+1] + R[r+2]), 1));
-    g.boundingSphere = part.geom.boundingSphere;
-    var me = new THREE.Mesh(g, highlightMat); me.renderOrder = 2; me.matrixAutoUpdate = false;
-    Model.group.add(me); Highlight.push(me);
+    var me = new THREE.Mesh(g, highlightMat); me.renderOrder = 2; me.matrixAutoUpdate = false; me.matrix.copy(ins.F); me.frustumCulled = false;
+    Model.root.add(me); Highlight.push(me);
   }
+  Model.root.updateMatrixWorld(true);
   requestRender();
 }
 
@@ -3337,7 +3494,7 @@ function renderRevitProps(d, rec, revitId, id){
   var box = $("elemBox"); box.innerHTML = "";
   var tp = rec.t ? d.types[rec.t] : null;
   var head = document.createElement("table"); head.className = "kv rp-head";
-  [["Categoría", rec.c], ["Familia", tp && tp.f], ["Tipo", tp && tp.n], ["Id de Revit", revitId]].forEach(function(r){
+  originRows(id).concat([["Categoría", rec.c], ["Familia", tp && tp.f], ["Tipo", tp && tp.n], ["Id de Revit", revitId]]).forEach(function(r){
     if (!r[1]) return; var tr = head.insertRow(); tr.insertCell().textContent = r[0]; tr.insertCell().textContent = String(r[1]);
   });
   box.appendChild(head);
@@ -3353,20 +3510,28 @@ function renderRevitProps(d, rec, revitId, id){
 }
 function selectElement(id){
   S.selectedId = id;
-  if (id === null || !Model){ setHighlight(-1); $("elemBox").innerHTML = '<p class="hint">Ningún elemento seleccionado.</p>'; return; }
-  var idx = Model.index.get(id);
-  setHighlight(idx);
-  var box = $("elemBox"), tag = Model.tags[idx];
+  if (id === null || id === undefined || !Model){ S.selectedId = null; setHighlight(-1); $("elemBox").innerHTML = '<p class="hint">Ningún elemento seleccionado.</p>'; return; }
+  setHighlight(id);
+  var md = entryModel(id), i = Model.eElem[id], tag = md.tags[i];
+  var pkey = S.manifest && S.manifest.props_keys === "modelo" ? (md.key || "H") + ":" + tag : tag;
+  var box = $("elemBox");
   box.innerHTML = '<p class="hint">Leyendo propiedades…</p>';
   loadRevitProps().then(function(d){
     if (S.selectedId !== id) return;
-    var rec = d && tag ? d.elems[tag] : null;
+    var rec = d && tag ? d.elems[pkey] : null;
     if (rec) renderRevitProps(d, rec, tag, id); else showIfcProps(id);
   });
 }
+function originRows(id){
+  if (!Model || Model.single) return [];
+  var md = entryModel(id), ins = md.instances[Model.eInst[id]], rows = [["Modelo", md.key === "H" ? "Anfitrión · " + md.name : md.name]];
+  if (md.instances.length > 1) rows.push(["Copia", (ins.name || "copia") + " (" + (Model.eInst[id] + 1) + " de " + md.instances.length + ")"]);
+  return rows;
+}
 function showIfcProps(id){
   var box = $("elemBox"); box.innerHTML = '<p class="hint">Leyendo propiedades IFC…</p>';
-  ensureProps().then(function(){ return ifcCall({cmd:"props", id:id}); }).then(function(r){
+  var mi = Model.eModel[id], expressId = Model.models[mi].ids[Model.eElem[id]];
+  ensureProps(mi).then(function(){ return ifcCall({cmd:"props", id:expressId}); }).then(function(r){
     if (S.selectedId !== id) return;
     box.innerHTML = "";
     var t = document.createElement("table"); t.className = "kv";
@@ -3478,15 +3643,20 @@ var CAT_ES = {IFCWALL:"Muros", IFCWALLSTANDARDCASE:"Muros", IFCCURTAINWALL:"Muro
 var DEFAULT_HIDDEN = {"Espacios":true, "Huecos":true};
 var Vis = {hiddenIds:{}, hiddenCats:{}, hiddenStoreys:{}, isolated:null, cat:[], storey:[]};
 function indexModel(){
-  Vis = {hiddenIds:{}, hiddenCats:Object.assign({}, DEFAULT_HIDDEN), hiddenStoreys:{}, isolated:null, cat:new Array(Model.n), storey:new Array(Model.n)};
+  Vis = {hiddenIds:{}, hiddenCats:Object.assign({}, DEFAULT_HIDDEN), hiddenStoreys:{}, isolated:null, cat:[], storey:[]};
   clearSections();
-  var cc = {}, sc = {}, none = 0;
-  for (var i = 0; i < Model.n; i++){
-    var c = CAT_ES[Model.types[i]] || Model.types[i].replace(/^IFC/, "").toLowerCase(); Vis.cat[i] = c; cc[c] = (cc[c] || 0) + 1;
-    var s = Model.storeys[i] || "__none"; Vis.storey[i] = s; if (s === "__none") none++; else sc[s] = (sc[s] || 0) + 1;
-  }
+  var cc = {}, sc = {}, none = 0, order = [];
+  Model.models.forEach(function(md, mi){
+    var cats = new Array(md.n), sts = new Array(md.n), copies = md.instances.length;
+    for (var i = 0; i < md.n; i++){
+      var c = CAT_ES[md.types[i]] || String(md.types[i] || "otro").replace(/^IFC/, "").toLowerCase(); cats[i] = c; cc[c] = (cc[c] || 0) + copies;
+      var s = md.storeys[i] || "__none"; sts[i] = s; if (s === "__none") none += copies; else sc[s] = (sc[s] || 0) + copies;
+    }
+    Vis.cat[mi] = cats; Vis.storey[mi] = sts;
+    md.storeyOrder.forEach(function(n){ if (order.indexOf(n) < 0) order.push(n); });
+  });
   renderChecks("catList", Object.keys(cc).sort(natural).map(function(c){ return {key:c, label:c, n:cc[c]}; }), "hiddenCats");
-  var st = Model.storeyOrder.filter(function(n){ return sc[n]; }).map(function(n){ return {key:n, label:n, n:sc[n]}; });
+  var st = order.filter(function(n){ return sc[n]; }).map(function(n){ return {key:n, label:n, n:sc[n]}; });
   if (none) st.push({key:"__none", label:"Sin planta (emplazamiento, terreno…)", n:none});
   renderChecks("storeyList", st, "hiddenStoreys");
   refreshVisibility();
@@ -3509,19 +3679,23 @@ function syncChecks(){
 }
 function refreshVisibility(){
   if (!Model) return;
-  var hidden = 0, V = Model.visible;
-  for (var i = 0; i < Model.n; i++){
-    var id = Model.ids[i];
-    var v = !(Vis.hiddenIds[id] || Vis.hiddenCats[Vis.cat[i]] || Vis.hiddenStoreys[Vis.storey[i]] || (Vis.isolated && !Vis.isolated[id]));
-    V[i] = v ? 1 : 0; if (!v) hidden++;
-  }
+  var hidden = 0;
+  Model.models.forEach(function(md, mi){
+    var V = md.visible, cats = Vis.cat[mi], sts = Vis.storey[mi];
+    for (var i = 0; i < md.n; i++){
+      var k = elemKey(mi, i);
+      var v = !(Vis.hiddenIds[k] || Vis.hiddenCats[cats[i]] || Vis.hiddenStoreys[sts[i]] || (Vis.isolated && !Vis.isolated[k]));
+      V[i] = v ? 1 : 0; if (!v) hidden += md.instances.length;
+    }
+  });
   applyDrawLists();
-  if (S.selectedId !== null && !V[Model.index.get(S.selectedId)]) selectElement(null);
+  if (S.selectedId !== null && S.selectedId !== undefined && !entryModel(S.selectedId).visible[Model.eElem[S.selectedId]]) selectElement(null);
   var nh = Object.keys(Vis.hiddenIds).length;
-  $("visInfo").textContent = (Vis.isolated ? "Vista aislada. " : "") + hidden.toLocaleString("es-ES") + " elementos ocultos" + (nh ? " (" + nh + " a mano)" : "") + ".";
+  $("visInfo").textContent = (Vis.isolated ? "Vista aislada. " : "") + hidden.toLocaleString("es-ES") + " elementos ocultos" + (nh ? " (" + nh + " a mano" + (Model.single ? "" : "; en vínculos repetidos, en todas sus copias") + ")" : "") + ".";
 }
-function hideSelected(){ if (S.selectedId === null) return; Vis.hiddenIds[S.selectedId] = true; refreshVisibility(); }
-function isolateSelected(){ if (S.selectedId === null) return; Vis.isolated = {}; Vis.isolated[S.selectedId] = true; refreshVisibility(); }
+function selectedKey(){ return S.selectedId === null || S.selectedId === undefined ? null : elemKey(Model.eModel[S.selectedId], Model.eElem[S.selectedId]); }
+function hideSelected(){ var k = selectedKey(); if (k === null) return; Vis.hiddenIds[k] = true; refreshVisibility(); }
+function isolateSelected(){ var k = selectedKey(); if (k === null) return; Vis.isolated = {}; Vis.isolated[k] = true; refreshVisibility(); }
 function showAll(){ Vis.hiddenIds = {}; Vis.isolated = null; Vis.hiddenStoreys = {}; Vis.hiddenCats = Object.assign({}, DEFAULT_HIDDEN); syncChecks(); refreshVisibility(); }
 $("hideSel").addEventListener("click", hideSelected);
 $("isoSel").addEventListener("click", isolateSelected);
@@ -3556,8 +3730,16 @@ var TOL_MM = 30, tagMap = null;
 function median(a){ if (!a.length) return 0; var b = a.slice().sort(function(x,y){return x-y;}), m = b.length >> 1; return b.length % 2 ? b[m] : (b[m-1]+b[m])/2; }
 function runExportCheck(){
   var holder = $("checkBox");
+  if (Model && S.manifest && S.manifest.federation && !S.manifest.federation.host){
+    holder.innerHTML = '<p class="hint">Todo el modelo está en vínculos: el control de exportación solo revisa los elementos del modelo anfitrión, así que aquí no aplica.</p>';
+    return;
+  }
   if (!Model || !S.manifest || !S.manifest.check_elements || !S.manifest.check_elements.length) return;
-  if (!tagMap){ tagMap = new Map(); for (var i = 0; i < Model.n; i++) if (Model.tags[i]) tagMap.set(Model.tags[i], i); }
+  if (!tagMap){
+    tagMap = new Map();
+    var hi = Model.models.findIndex(function(md){ return md.key === "" || md.key === "H"; });
+    if (hi >= 0){ var hm = Model.models[hi]; for (var i = 0; i < hm.n; i++) if (hm.tags[i]) tagMap.set(hm.tags[i], entryOf(hi, 0, i)); }
+  }
   var res = [], cats = {};
   S.manifest.check_elements.forEach(function(it){
     var c = cats[it.category] = cats[it.category] || {total:0, ok:0, bad:0, miss:0}; c.total++;
@@ -3596,7 +3778,7 @@ function runExportCheck(){
     var li = document.createElement("li"); li.innerHTML = "<div></div><div class=\"m\"></div>";
     li.children[0].textContent = r.it.name + " · Id " + r.it.id;
     li.children[1].textContent = (r.it.level || "") + " · ΔZ " + r.d[2].toFixed(0) + " mm · ΔXY " + r.dxy.toFixed(0) + " mm" + (r.it.flipped ? " · volteada" : "");
-    li.addEventListener("click", function(){ selectElement(Model.ids[r.ei]); var c = elementBox(r.ei).getCenter(new THREE.Vector3()); placeMarker(c); flyTo(c, c.clone().add(new THREE.Vector3(4, 3, 4))); });
+    li.addEventListener("click", function(){ selectElement(r.ei); var c = elementBox(r.ei).getCenter(new THREE.Vector3()); placeMarker(c); flyTo(c, c.clone().add(new THREE.Vector3(4, 3, 4))); });
     list.appendChild(li);
   });
   if (list.children.length) holder.appendChild(list);
@@ -3607,7 +3789,7 @@ function renderPkg(){
   var cur = Lib.entries.filter(function(e){ return e.current; });
   var pubs = new Set(Lib.entries.map(function(e){ return e.path; }));
   [["Láminas", cur.length + (Lib.entries.length > cur.length ? " vigentes (+" + (Lib.entries.length - cur.length) + " versiones anteriores)" : "")],
-   ["Publicaciones", String(pubs.size)],
+   ["Publicaciones", String(pubs.size) + (S.pubPending && S.pubPending.length ? " (+" + S.pubPending.length + " sin completar)" : "")],
    ["Sin localización", String(cur.filter(function(e){ return !e.loc; }).length)],
    ["Modelo", S.ifcName || "pendiente"], ["Manifiesto", S.manifest ? (S.manifest.ifc_file || "sí") : "pendiente"]]
   .concat(S.openStats ? [["Apertura", S.openStats.secs.toLocaleString("es-ES", {maximumFractionDigits:1}) + " s · " + S.openStats.fetched + " descargados, " + S.openStats.cached + " de la caché"]] : [])
