@@ -164,6 +164,23 @@ dialog h3{margin:0 0 12px;font-size:16px;font-weight:600}
 .tool-panel.compact{width:auto;padding:6px 8px}
 .pane-model .pane-bar{flex-wrap:wrap;row-gap:6px}
 .pane-model .pane-bar .t{flex:1 1 90px;min-width:80px}
+#orgDlg{max-width:none;width:min(820px,94vw)}
+.org-form{width:100%;box-sizing:border-box}
+.org-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0 10px;font-size:13px}
+.org-bar .spacer{flex:1}
+.org-body{max-height:56vh;overflow-y:auto;display:grid;gap:8px}
+.org-group{border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+.org-group.over{border-color:var(--accent);background:color-mix(in srgb, var(--accent) 6%, transparent)}
+.org-head{display:flex;gap:6px;align-items:center}
+.org-head input{flex:1;min-width:0;font-weight:600;border:1px solid transparent;border-radius:5px;padding:3px 6px;background:transparent;color:var(--ink)}
+.org-head input:hover,.org-head input:focus{border-color:var(--line)}
+.org-head button{padding:1px 8px;font-size:12px}
+.org-head .n{color:var(--muted);font-size:12px;margin-left:4px}
+.org-items{list-style:none;margin:4px 0 0;padding:0;min-height:22px;font-size:12.5px}
+.org-items li{display:flex;gap:8px;align-items:center;padding:3px 4px;border-radius:5px;cursor:grab}
+.org-items li:hover{background:var(--bg)}
+.org-items li.dragging{opacity:.4}
+.org-items .src,.sheets .src{margin-left:auto;font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 5px;white-space:nowrap}
 .pkg-tools{display:flex;gap:6px;margin:4px 0 8px}
 .pkg-tools input{flex:1;min-width:0;border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:13px;background:var(--panel);color:var(--ink)}
 .pkg-list{max-height:300px;overflow-y:auto;border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12.5px}
@@ -252,6 +269,7 @@ dialog h3{margin:0 0 12px;font-size:16px;font-weight:600}
           <div class="drawer-tools">
             <input type="search" id="sheetSearch" placeholder="Buscar por número o nombre" aria-label="Buscar láminas">
             <div class="row">Agrupar por <select id="groupBy"></select></div>
+            <button id="orgBtn" type="button" title="Crear grupos y ordenar las láminas para todo el proyecto" hidden>Organizar planos…</button>
             <label class="row"><input type="checkbox" id="showOld"> Ver revisiones superadas</label>
             <button id="pkgPrintBtn" title="Elige varias láminas y genera un único PDF para imprimir">Paquete de impresión…</button>
           </div>
@@ -325,6 +343,7 @@ dialog h3{margin:0 0 12px;font-size:16px;font-weight:600}
             <button id="showAll" title="Tecla Esc">Mostrar todo</button>
           </div>
           <p class="hint" id="visInfo"></p>
+          <div id="srcSec" hidden><h4>Modelos</h4><div class="chks" id="srcList"></div></div>
           <h4>Plantas</h4>
           <div class="chks" id="storeyList"><p class="hint">Sin modelo.</p></div>
           <h4>Categorías</h4>
@@ -379,6 +398,26 @@ dialog h3{margin:0 0 12px;font-size:16px;font-weight:600}
       <button type="button" id="incGo">Ir al punto</button>
       <button value="cancel" formnovalidate>Cancelar</button>
       <button value="save" class="primary">Guardar</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="orgDlg" aria-labelledby="orgH">
+  <form method="dialog" class="org-form">
+    <h3 id="orgH">Organizar planos</h3>
+    <p class="hint">Arrastra las láminas entre grupos, o márcalas y usa «Mover a». Se guarda para todo el proyecto: equipo y agentes verán los planos así. Las láminas nuevas aparecen en «Sin clasificar».</p>
+    <div class="org-bar">
+      <button type="button" id="orgAdd">+ Grupo</button>
+      <label>Crear grupos según <select id="orgSeed"></select></label>
+      <button type="button" id="orgSeedGo">Aplicar</button>
+      <span class="spacer"></span>
+      <select id="orgMove" aria-label="Mover las láminas seleccionadas"></select>
+    </div>
+    <div class="org-body" id="orgBody"></div>
+    <p class="hint" id="orgInfo"></p>
+    <div class="dlg-actions">
+      <span class="spacer"></span>
+      <button value="cancel" formnovalidate>Cancelar</button>
+      <button type="button" id="orgSave" class="primary">Guardar para todos</button>
     </div>
   </form>
 </dialog>
@@ -1727,7 +1766,7 @@ var toastT;
 function toast(msg){ var t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(function(){ t.hidden = true; }, 4200); }
 function val(x){ return x && typeof x === "object" && "value" in x ? x.value : x; }
 
-var S = {cur:null, loc:null, page:null, manifest:null, ifcName:"", zoom:0, fit:1, pickSheet:null, modelSheet:null, ctx:null, selectedId:null,
+var S = {cur:null, loc:null, page:null, manifest:null, manifests:[], ifcName:"", zoom:0, fit:1, pickSheet:null, modelSheet:null, ctx:null, selectedId:null,
          project:null, role:null, online:false};
 
 // ================================================================ configuración
@@ -1934,7 +1973,8 @@ function applyRole(){
 function resetWorkspace(){
   Lib.locs = new Map(); Lib.pdfs = new Map(); Lib.pdfsByName = new Map(); Lib.cache.forEach(function(p){ p.then(function(d){ d.destroy(); }).catch(function(){}); }); Lib.cache = new Map();
   Lib.entries = []; Lib.byNum = new Map(); S.cur = null; S.loc = null; S.page = null; S.manifest = null; S.ifcName = "";
-  Issues = []; Sync.since = ""; S.openStats = null; S.pubPending = []; Lib.keyMap = new Map(); resetRevitProps(null); $("wrap").hidden = true; $("pdfEmpty").hidden = false; drawOverlay();
+  Issues = []; Sync.since = ""; S.openStats = null; S.pubPending = []; S.manifests = []; S.manifest = null;
+  Frames.names = new Map(); Frames.warned = {}; PropsCache.clear(); Lib.keyMap = new Map(); resetRevitProps(null); $("wrap").hidden = true; $("pdfEmpty").hidden = false; drawOverlay();
   if (Model){ disposeModel(); requestRender(); }
   $("ifcEmpty").hidden = false; $("progress").textContent = ""; $("checkBox").innerHTML = '<p class="hint">Se calcula al cargar el IFC con su _MODELO.json.</p>';
 }
@@ -1994,6 +2034,7 @@ function openProject(code){
     S.role = d.role; applyRole();
     Issues = d.issues.filter(function(i){ return !i.deleted; });
     Sync.since = d.issues.reduce(function(m, i){ return i.updated_at > m ? i.updated_at : m; }, "");
+    orgSet(d.layout || null);
     renderIssueList();
     var indices = [], locs = [], modelos = [], ifcs = [], geos = [], propsFiles = [];
     d.files.forEach(function(f){
@@ -2021,33 +2062,46 @@ function openProject(code){
         Lib.addLoc(sh, pdf.replace(/\.pdf$/i, "_LOC.json"), f.path || "");
       });
       else if (j.viewports && j.paper) Lib.addLoc(j, f.name, f.path || "");
-      else if (j.ifc_file && (!S.manifest || (j.generated || "") >= (S.manifest.generated || ""))){
-        S.manifest = j; S.manifestPath = f.path || ""; if (j.ifc_coordinate_base === "shared") $("coordBase").value = "shared";
+      else if (j.ifc_file){
+        S.manifests.push({j:j, path:f.path || ""});
+        if (!S.manifest || (j.generated || "") >= (S.manifest.generated || "")){
+          S.manifest = j; S.manifestPath = f.path || ""; if (j.ifc_coordinate_base === "shared") $("coordBase").value = "shared";
+        }
       }
       refresh();
     }
     var ifcStarted = false;
     function startIfc(){
       if (ifcStarted || S.project !== code) return; ifcStarted = true;
-      var man = S.manifest;
-      if (man && man.federation){
-        var mp = S.manifestPath || "", missing = [], list = [];
-        var findIfc = function(name){ return ifcs.filter(function(x){ return (x.path || "") === mp && x.name === name; })[0] || ifcs.filter(function(x){ return x.name === name; })[0]; };
-        var addModel = function(key, name, file, instances){
-          var f = findIfc(file); if (!f){ missing.push(file); return; }
-          var rf = new RemoteFile(f), gp = (rf.id + "_" + String(rf.modified).replace(/\D/g, "") + "_").toLowerCase();
-          var g = geos.filter(function(x){ return x.name.toLowerCase().indexOf(gp) === 0; })[0];
-          list.push({key:key, name:name, file:rf, geo:g ? new RemoteFile(g) : null, instances:instances});
+      computeFrames();
+      var known = Frames.known, bySrc = new Map();
+      (S.manifests || []).forEach(function(x){
+        var s = resolveSrc(x.j, known), c = bySrc.get(s);
+        if (!c || (x.j.generated || "") >= (c.j.generated || "")) bySrc.set(s, x);
+      });
+      var refMan = bySrc.get(Frames.ref);
+      if (refMan){ S.manifest = refMan.j; S.manifestPath = refMan.path; }
+      var findIn = function(list, path, name){ return list.filter(function(x){ return (x.path || "") === path && x.name === name; })[0] || list.filter(function(x){ return x.name === name; })[0]; };
+      var geoFor = function(rf){ var gp = (rf.id + "_" + String(rf.modified).replace(/\D/g, "") + "_").toLowerCase(); var g = geos.filter(function(x){ return x.name.toLowerCase().indexOf(gp) === 0; })[0]; return g ? new RemoteFile(g) : null; };
+      var list = [], missing = [];
+      bySrc.forEach(function(x, src){
+        var man = x.j, mp = x.path, pf = man.props_file ? findIn(propsFiles, mp, man.props_file) : null;
+        if (!pf && !man.federation && man.ifc_file){ var pn = man.ifc_file.replace(/\.ifc$/i, "_PROPS.json.gz").toLowerCase(); pf = propsFiles.filter(function(f){ return (f.path || "") === mp && f.name.toLowerCase() === pn; })[0]; }
+        var common = {src:src, pre:Frames.R.get(src) || null, propsFile:pf ? new RemoteFile(pf) : null, propsKeys:man.props_keys || "id"};
+        var add = function(key, name, file, instances){
+          var f = findIn(ifcs, mp, file); if (!f){ missing.push(file); return; }
+          var rf = new RemoteFile(f);
+          list.push(Object.assign({key:key, name:name, file:rf, geo:geoFor(rf), instances:instances}, common));
         };
-        if (man.federation.host) addModel("H", man.federation.host.name, man.federation.host.ifc_file, null);
-        (man.federation.models || []).forEach(function(m){ addModel(m.key, m.name, m.ifc_file, m.instances); });
-        var pf2 = propsFiles.filter(function(f){ return f.name === man.props_file && (f.path || "") === mp; })[0] || propsFiles.filter(function(f){ return f.name === man.props_file; })[0];
-        resetRevitProps(pf2 ? new RemoteFile(pf2) : null);
-        if (missing.length) toast("Faltan " + missing.length + " modelos de la federación en Drive (¿aún subiéndose?).");
-        if (list.length) loadModelSet(list);
-        else $("ifcEmptyTxt").textContent = "Los modelos de la federación no están en Drive todavía.";
-        return;
-      }
+        if (man.federation){
+          if (man.federation.host) add("H", srcLabel(src), man.federation.host.ifc_file, null);
+          (man.federation.models || []).forEach(function(m){ add(m.key, m.name, m.ifc_file, m.instances); });
+        } else add("", srcLabel(src), man.ifc_file, null);
+      });
+      if (Frames.noShared.length && !Frames.warned.noShared){ Frames.warned.noShared = true; toast("Sin coordenadas compartidas en: " + Frames.noShared.map(srcLabel).join(", ") + ". Se colocan con sus coordenadas internas."); }
+      if (missing.length) toast("Faltan " + missing.length + " modelos en Drive (¿aún subiéndose?).");
+      if (list.length){ loadModelSet(list); return; }
+      // sin manifiestos: el IFC más reciente, como siempre
       var ifc = pickIfc(ifcs.map(function(f){ return new RemoteFile(f); }));
       if (ifc){
         var prefix = (ifc.id + "_" + String(ifc.modified).replace(/\D/g, "") + "_").toLowerCase();
@@ -2077,9 +2131,10 @@ function openProject(code){
 function syncIssues(full){
   if (!S.online || !S.project) return Promise.resolve();
   var code = S.project;
-  return api("issues", {project:code, since:full ? "" : Sync.since}).then(function(d){
+  return api("issues", {project:code, since:full ? "" : Sync.since, layoutRev:Org.rev}).then(function(d){
     if (S.project !== code) return;
     if (d.role !== S.role){ S.role = d.role; applyRole(); }
+    if (d.layout !== undefined && !$("orgDlg").open){ orgSet(d.layout); fillGroupBy(); renderSheetList(); }
     var byId = new Map(Issues.map(function(i){ return [i.id, i]; })), changed = false;
     d.issues.forEach(function(inc){
       if (inc.updated_at > Sync.since) Sync.since = inc.updated_at;
@@ -2106,7 +2161,60 @@ function invert(t){
           basis_x:[inv[0][0],inv[1][0],inv[2][0]], basis_y:[inv[0][1],inv[1][1],inv[2][1]], basis_z:[inv[0][2],inv[1][2],inv[2][2]]};
 }
 var sharedInv = null;
+// ---- modelos de origen. Cada archivo de Revit publica en sus coordenadas internas; el visor trabaja
+// en las del modelo de referencia (el primero publicado) y traslada los demás con sus coordenadas
+// compartidas: interno del archivo → compartidas → interno de referencia.
+var Frames = {ref:"", R:new Map(), Rinv:new Map(), names:new Map(), noShared:[], known:new Set(), refA:null, warned:{}};
+function composeX(a, b){ return {origin_mm:apply(a, b.origin_mm), basis_x:applyLinear(a, b.basis_x), basis_y:applyLinear(a, b.basis_y), basis_z:applyLinear(a, b.basis_z)}; }
+function isIdentityX(t){
+  var o = t.origin_mm, e = 1e-6;
+  return Math.abs(o[0]) < 0.5 && Math.abs(o[1]) < 0.5 && Math.abs(o[2]) < 0.5 &&
+         Math.abs(t.basis_x[0] - 1) < e && Math.abs(t.basis_y[1] - 1) < e && Math.abs(t.basis_z[2] - 1) < e;
+}
+function explicitSrc(o){ return o && o.source && o.source.key ? String(o.source.key) : null; }
+function knownSources(){
+  var k = new Set();
+  Lib.locs.forEach(function(v){ var s = explicitSrc(v.loc); if (s) k.add(s); });
+  (S.manifests || []).forEach(function(x){ var s = explicitSrc(x.j); if (s) k.add(s); });
+  return k;
+}
+// publicaciones antiguas sin origen: se asignan por nombre de archivo («23030-2D-GEN_usuario» → «23030-2D-GEN»)
+function resolveSrc(o, known){
+  var s = explicitSrc(o); if (s) return s;
+  if (!known || !known.size) return "";
+  var f = (o && o.file) || "", hit = "";
+  known.forEach(function(k){ if (f === k || f.indexOf(k + "_") === 0) hit = k; });
+  return hit;
+}
+function computeFrames(){
+  var known = knownSources(), coords = new Map();
+  var take = function(src, gen, c, name){
+    if (name) Frames.names.set(src, name);
+    if (c && c.internal_to_shared){ var cur = coords.get(src); if (!cur || gen >= cur.gen) coords.set(src, {gen:gen, t:c.internal_to_shared}); }
+  };
+  var legacyName = function(o){ var f = (o && o.file) || ""; var m = f.match(/^(.*)_([^_]*\.[^_]*)$/); return m ? m[1] : f; };   // «23030-2D-GEN_d.segarra» → «23030-2D-GEN»
+  (S.manifests || []).forEach(function(x){ var s = resolveSrc(x.j, known); take(s, x.j.generated || "", x.j.coordinates, (x.j.source && x.j.source.name) || (!s && !Frames.names.has("") ? legacyName(x.j) : null)); });
+  Lib.locs.forEach(function(v){ var s = resolveSrc(v.loc, known); take(s, v.loc.generated || "", v.loc.coordinates, (v.loc.source && v.loc.source.name) || (!s && !Frames.names.has("") ? legacyName(v.loc) : null)); });
+  // referencia estable: el modelo del manifiesto más antiguo; si no hay modelos, el de la lámina más antigua
+  var ref = null, oldest = null;
+  (S.manifests || []).forEach(function(x){ var g = x.j.generated || ""; if (oldest === null || g < oldest){ oldest = g; ref = resolveSrc(x.j, known); } });
+  if (ref === null) Lib.locs.forEach(function(v){ var g = v.loc.generated || ""; if (oldest === null || g < oldest){ oldest = g; ref = resolveSrc(v.loc, known); } });
+  Frames.ref = ref || ""; Frames.known = known; Frames.R = new Map(); Frames.Rinv = new Map(); Frames.noShared = [];
+  var A0 = coords.get(Frames.ref); Frames.refA = A0 ? A0.t : null;
+  coords.forEach(function(c, src){
+    if (src === Frames.ref) return;
+    if (!A0){ Frames.noShared.push(src); return; }
+    var R = composeX(invert(A0.t), c.t);
+    if (!isIdentityX(R)){ Frames.R.set(src, R); Frames.Rinv.set(src, invert(R)); }
+  });
+}
+function toRef(src, p){ var R = Frames.R.get(src || ""); return R ? apply(R, p) : p; }
+function toRefDir(src, d){ var R = Frames.R.get(src || ""); return R ? applyLinear(R, d) : d; }
+function fromRef(src, p){ var R = Frames.Rinv.get(src || ""); return R ? apply(R, p) : p; }
+function srcLabel(src){ return Frames.names.get(src) || src || "Modelo principal"; }
+function sourceCount(){ var s = new Set(Lib.entries.map(function(e){ return e.src || ""; })); (Model ? Model.models : []).forEach(function(md){ s.add(md.src || ""); }); return s.size; }
 function sharedXform(){
+  if (Frames.refA) return Frames.refA;
   var c = (S.manifest && S.manifest.coordinates) || (S.loc && S.loc.coordinates);
   return c && c.internal_to_shared ? c.internal_to_shared : null;
 }
@@ -2156,6 +2264,7 @@ function readEntries(entries){
 }
 
 function intake(files){
+  if (typeof orgLoadLocal === "function") orgLoadLocal();
   var pdfs = [], jsons = [], ifcs = [], props = [];
   files.forEach(function(f){
     var n = f.name.toLowerCase();
@@ -2189,9 +2298,10 @@ function intake(files){
     if (S.manifest && S.manifest.federation){
       var fm = S.manifest, lp2 = S.manifestPath || "", llist = [];
       var lfind = function(name){ return ifcs.filter(function(x){ return localPath(x) === lp2 && x.name === name; })[0] || ifcs.filter(function(x){ return x.name === name; })[0]; };
-      if (fm.federation.host){ var hf = lfind(fm.federation.host.ifc_file); if (hf) llist.push({key:"H", name:fm.federation.host.name, file:hf, geo:null, instances:null}); }
-      (fm.federation.models || []).forEach(function(m){ var f = lfind(m.ifc_file); if (f) llist.push({key:m.key, name:m.name, file:f, geo:null, instances:m.instances}); });
       resetRevitProps(props.filter(function(f){ return f.name === fm.props_file; })[0] || null);
+      var lprops = {propsFile:RevitProps.file, propsKeys:fm.props_keys || "id"};
+      if (fm.federation.host){ var hf = lfind(fm.federation.host.ifc_file); if (hf) llist.push(Object.assign({key:"H", name:fm.federation.host.name, file:hf, geo:null, instances:null}, lprops)); }
+      (fm.federation.models || []).forEach(function(m){ var f = lfind(m.ifc_file); if (f) llist.push(Object.assign({key:m.key, name:m.name, file:f, geo:null, instances:m.instances}, lprops)); });
       if (llist.length){ loadModelSet(llist); return; }
     }
     var ifc = pickIfc(ifcs);
@@ -2231,6 +2341,8 @@ var Lib = {
   rebuild:function(includeOrphans){
     if (includeOrphans === undefined) includeOrphans = true;
     var used = new Set(), entries = [], keys = new Set(), self = this;
+    computeFrames();
+    var known = Frames.known;
     this.locs.forEach(function(v, key){
       var d = v.loc, pf = (d.pdf_file || "").toLowerCase(), k = v.path + "|" + pf, file = self.pdfs.get(k);
       if (!file){ var base = v.name.replace(/_LOC\.json$/i, "").toLowerCase() + ".pdf"; k = v.path + "|" + base; file = self.pdfs.get(k); }
@@ -2238,16 +2350,17 @@ var Lib = {
       if (file) used.add(k);
       var params = d.sheet.params || {};
       Object.keys(params).forEach(function(x){ keys.add(x); });
-      entries.push({key:key, number:d.sheet.number, name:d.sheet.name || "", revision:d.sheet.revision || "", loc:d, file:file || null,
+      var src = resolveSrc(d, known);
+      entries.push({key:(src ? src + "§" : "") + key, src:src, number:d.sheet.number, name:d.sheet.name || "", revision:d.sheet.revision || "", loc:d, file:file || null,
                     params:params, path:v.path, published:d.generated || (file && file.modified) || ""});
     });
     if (includeOrphans) this.pdfs.forEach(function(f, k){
       if (used.has(k)) return;
       var nb = f.name.replace(/\.pdf$/i, ""), path = k.slice(0, k.lastIndexOf("|"));
-      entries.push({key:"pdf|" + k, number:nb, name:"", revision:"", loc:null, file:f, params:{}, path:path, published:f.modified || ""});
+      entries.push({key:"pdf|" + k, src:"", number:nb, name:"", revision:"", loc:null, file:f, params:{}, path:path, published:f.modified || ""});
     });
     var byNum = new Map();
-    entries.forEach(function(e){ if (!byNum.has(e.number)) byNum.set(e.number, []); byNum.get(e.number).push(e); });
+    entries.forEach(function(e){ var k = sheetKeyOf(e.src, e.number); if (!byNum.has(k)) byNum.set(k, []); byNum.get(k).push(e); });
     byNum.forEach(function(list){
       list.sort(function(a, b){ return (a.published < b.published ? -1 : a.published > b.published ? 1 : 0) || natural(a.revision, b.revision); });
       list.forEach(function(e, i){ e.current = i === list.length - 1; e.versions = list; e.vno = i + 1; });
@@ -2258,9 +2371,16 @@ var Lib = {
     fillGroupBy();
   },
   byKey:function(k){ return this.keyMap.get(k) || null; },
-  currentOf:function(number){ var l = this.byNum.get(number); return l ? l[l.length - 1] : null; },
+  // versiones de una lámina: (origen, número); sin origen (incidencias antiguas), la primera con ese número
+  listFor:function(number, src){
+    if (src !== undefined && src !== null){ var l = this.byNum.get(sheetKeyOf(src, number)); if (l) return l; }
+    var exact = this.byNum.get(number); if (exact) return exact;
+    var found = null; this.byNum.forEach(function(l, k){ if (!found && k.slice(k.indexOf("§") + 1) === number) found = l; });
+    return found;
+  },
+  currentOf:function(number, src){ var l = this.listFor(number, src); return l ? l[l.length - 1] : null; },
   versionFor:function(ref){
-    var l = this.byNum.get(ref.number); if (!l) return null;
+    var l = this.listFor(ref.number, ref.src); if (!l) return null;
     if (ref.version !== undefined && ref.version !== null){ var v = l.filter(function(e){ return e.path === ref.version; })[0]; if (v) return v; }
     var r = l.filter(function(e){ return (e.revision || "") === (ref.revision || ""); });
     return r.length ? r[r.length - 1] : l[l.length - 1];
@@ -2276,6 +2396,7 @@ var Lib = {
   }
 };
 // ¿la incidencia se creó sobre esta misma versión de la lámina?
+function sheetKeyOf(src, number){ return (src ? src + "§" : "") + number; }
 function sameVersion(i, e){
   if (!i.sheet || !e) return false;
   if (i.sheet.version !== undefined && i.sheet.version !== null) return i.sheet.version === e.path;
@@ -2286,14 +2407,21 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([$("pdfWor
 function fillGroupBy(){
   var sel = $("groupBy"), prev = sel.value;
   sel.innerHTML = "";
-  [["prefix","Prefijo del número"],["none","Sin agrupar"]].concat(Lib.paramKeys.map(function(k){ return ["p:" + k, k]; })).forEach(function(o){
+  var extra = [], hasOrg = typeof Org !== "undefined" && Org && Org.data;
+  if (hasOrg) extra.push(["__org", "Organización del proyecto"]);
+  if (sourceCount() > 1) extra.push(["__src", "Modelo de origen"]);
+  extra.concat([["prefix","Prefijo del número"],["none","Sin agrupar"]]).concat(Lib.paramKeys.map(function(k){ return ["p:" + k, k]; })).forEach(function(o){
     var op = document.createElement("option"); op.value = o[0]; op.textContent = o[1]; sel.appendChild(op);
   });
   var pref = Lib.paramKeys.filter(function(k){ return /grupo|disciplina|categor/i.test(k); })[0];
-  sel.value = prev && Array.prototype.some.call(sel.options, function(o){ return o.value === prev; }) ? prev : (pref ? "p:" + pref : "prefix");
+  var has = function(v){ return Array.prototype.some.call(sel.options, function(o){ return o.value === v; }); };
+  sel.value = prev && has(prev) ? prev : (hasOrg ? "__org" : pref ? "p:" + pref : "prefix");
+  $("orgBtn").hidden = typeof canOrganize !== "function" || !canOrganize();
 }
 function groupOf(e, mode){
   if (mode === "none") return "";
+  if (mode === "__org"){ var x = Org.index.get(orgKey(e)); return x ? Org.data.groups[x.g].name : ORG_NONE; }
+  if (mode === "__src") return srcLabel(e.src);
   if (mode === "prefix"){ var m = String(e.number).match(/^[^\d]+/); return m ? m[0].replace(/[\s_\-.]+$/, "") : "Numéricas"; }
   return e.params[mode.slice(2)] || "Sin valor";
 }
@@ -2312,7 +2440,8 @@ function renderSheetList(){
   }).sort(function(a, b){ return natural(a.number, b.number) || natural(a.revision, b.revision); });
   var groups = new Map();
   list.forEach(function(e){ var g = groupOf(e, mode); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(e); });
-  var names = Array.from(groups.keys()).sort(natural);
+  var names = orderedGroupNames(groups, mode), many = sourceCount() > 1;
+  names.forEach(function(g){ groups.set(g, sortGroupItems(groups.get(g), mode)); });
   flatList = [];
   var frag = document.createDocumentFragment();
   if (!list.length){
@@ -2331,6 +2460,7 @@ function renderSheetList(){
       if (e.published){ var pb = document.createElement("span"); pb.className = "pub"; pb.textContent = fmtPubShort(e.published) + (e.current && e.versions && e.versions.length > 1 ? " · " + e.versions.length + " versiones" : ""); a.appendChild(pb); }
       var b = document.createElement("span"); b.className = "nm"; b.textContent = e.name || "—"; b.title = e.name;
       li.appendChild(a); li.appendChild(b);
+      if (many && mode !== "__src"){ var tg = document.createElement("span"); tg.className = "src"; tg.textContent = srcLabel(e.src); li.appendChild(tg); }
       var n = counts.get(e.number);
       if (n && e.current){ var c = document.createElement("span"); c.className = "badge"; c.textContent = n; c.title = n + " incidencias pendientes"; li.appendChild(c); }
       ul.appendChild(li);
@@ -2364,7 +2494,7 @@ function toggleDrawer(on){
 $("drawerBtn").addEventListener("click", function(){ toggleDrawer(); });
 function stepSheet(d){
   if (!flatList.length) return;
-  var i = S.cur ? flatList.indexOf(Lib.currentOf(S.cur.number)) : -1;
+  var i = S.cur ? flatList.indexOf(Lib.currentOf(S.cur.number, S.cur.src)) : -1;
   var n = flatList[Math.max(0, Math.min(flatList.length - 1, i + d))];
   if (n && n !== S.cur) openSheet(n);
 }
@@ -2381,13 +2511,13 @@ function fillVersions(e){
     sel.appendChild(o);
   });
   sel.value = e.key; sel.hidden = list.length < 2;
-  var cur = Lib.currentOf(e.number);
+  var cur = Lib.currentOf(e.number, e.src);
   $("oldBanner").hidden = e.current;
   if (!e.current && cur) $("oldTxt").textContent = "Estás viendo una versión superada: v" + e.vno + (e.revision ? " · R" + e.revision : "") + " del " + fmtPub(e.published) +
     ". La vigente es la v" + cur.vno + (cur.revision ? " · R" + cur.revision : "") + " del " + fmtPub(cur.published) + ".";
 }
 $("verSel").addEventListener("change", function(){ var v = Lib.byKey(this.value); if (v) openSheet(v); });
-$("goCurrent").addEventListener("click", function(){ if (S.cur){ var c = Lib.currentOf(S.cur.number); if (c) openSheet(c); } });
+$("goCurrent").addEventListener("click", function(){ if (S.cur){ var c = Lib.currentOf(S.cur.number, S.cur.src); if (c) openSheet(c); } });
 var openSeq = 0;
 function openSheet(e){
   if (!e.file){ toast("Falta el PDF de la lámina " + e.number + " en el paquete."); return Promise.resolve(); }
@@ -2409,7 +2539,7 @@ function openSheet(e){
 
 function prefetchAround(e){
   if (!S.online) return;
-  var i = flatList.indexOf(Lib.currentOf(e.number)), idle = window.requestIdleCallback || function(fn){ return setTimeout(fn, 400); };
+  var i = flatList.indexOf(Lib.currentOf(e.number, e.src)), idle = window.requestIdleCallback || function(fn){ return setTimeout(fn, 400); };
   [i + 1, i - 1, i + 2].forEach(function(k){
     var n = flatList[k];
     if (n && n.file && n.file.size && n.file.size < 30e6) idle(function(){ n.file.arrayBuffer().catch(function(){}); });
@@ -2437,6 +2567,161 @@ if (CONFIG.DEV) window.__crvisor = {
   get renderer(){ return renderer; }, get camera(){ return camera; }
 };
 
+// ================================================================ organización de los planos (compartida)
+// Grupos y orden de las láminas, guardados en el servidor para todos. Solo el equipo puede cambiarla.
+var ORG_NONE = "Sin clasificar";
+var Org = {data:null, rev:0, by:"", updated:"", index:new Map(), names:new Map()};
+function orgKey(e){ return sheetKeyOf(e.src, e.number); }
+function orgSet(x){
+  Org.data = x && x.layout && x.layout.groups ? x.layout : null;
+  Org.rev = x ? x.rev || 0 : 0; Org.by = x ? x.by || "" : ""; Org.updated = x ? x.updated || "" : "";
+  Org.index = new Map(); Org.names = new Map();
+  if (Org.data) Org.data.groups.forEach(function(g, gi){ Org.names.set(g.name, gi); g.items.forEach(function(k, pi){ Org.index.set(k, {g:gi, p:pi}); }); });
+}
+function orgLocalKey(){ return "cr_visorobra_org_" + (S.project || "local"); }
+function orgLoadLocal(){ try { var x = JSON.parse(localStorage.getItem(orgLocalKey()) || "null"); orgSet(x); } catch(e){ orgSet(null); } }
+function canOrganize(){ return !S.online || S.role === "equipo"; }
+// orden de los grupos y de las láminas dentro de cada grupo según el modo de agrupación
+function orderedGroupNames(groups, mode){
+  var names = Array.from(groups.keys());
+  if (mode === "__org") return names.sort(function(a, b){
+    var ia = a === ORG_NONE ? 1e9 : (Org.names.has(a) ? Org.names.get(a) : 1e8), ib = b === ORG_NONE ? 1e9 : (Org.names.has(b) ? Org.names.get(b) : 1e8);
+    return ia - ib || natural(a, b);
+  });
+  return names.sort(natural);
+}
+function sortGroupItems(items, mode){
+  if (mode !== "__org") return items;
+  return items.slice().sort(function(a, b){
+    var x = Org.index.get(orgKey(a)), y = Org.index.get(orgKey(b));
+    return (x ? x.p : 1e9) - (y ? y.p : 1e9) || natural(a.number, b.number) || natural(a.revision, b.revision);
+  });
+}
+
+// ---- editor
+var OrgEd = {groups:[], dragKey:null};
+function orgCurrent(){ return Lib.entries.filter(function(e){ return e.current; }); }
+function orgEntryByKey(){ var m = new Map(); orgCurrent().forEach(function(e){ m.set(orgKey(e), e); }); return m; }
+function orgOpen(){
+  if (!canOrganize()){ toast("Solo el equipo del despacho puede organizar los planos."); return; }
+  if (!Lib.entries.length){ toast("No hay láminas cargadas."); return; }
+  OrgEd.groups = Org.data ? Org.data.groups.map(function(g){ return {id:g.id, name:g.name, items:g.items.slice()}; }) : [];
+  if (!OrgEd.groups.length) orgSeed($("groupBy").value !== "__org" ? $("groupBy").value : "prefix", true);
+  var seed = $("orgSeed"); seed.innerHTML = "";
+  Array.prototype.forEach.call($("groupBy").options, function(o){ if (o.value === "__org" || o.value === "none") return; var op = document.createElement("option"); op.value = o.value; op.textContent = o.textContent; seed.appendChild(op); });
+  $("orgInfo").textContent = Org.data && Org.updated ? "Última organización guardada por " + Org.by + " el " + fmtPub(Org.updated) + "." : "Aún no hay una organización guardada para este proyecto.";
+  orgRender();
+  if (!$("orgDlg").open) $("orgDlg").showModal();
+}
+function orgSeed(mode, silent){
+  if (!silent && OrgEd.groups.length && !confirm("Se sustituirán los grupos actuales del editor. ¿Continuar?")) return;
+  var groups = new Map();
+  orgCurrent().slice().sort(function(a, b){ return natural(a.number, b.number); }).forEach(function(e){
+    var g = groupOf(e, mode) || "Láminas"; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(orgKey(e));
+  });
+  OrgEd.groups = Array.from(groups.keys()).sort(natural).map(function(n, i){ return {id:"g" + Date.now().toString(36) + i, name:n, items:groups.get(n)}; });
+  if (!silent) orgRender();
+}
+function orgUnassigned(){
+  var used = new Set(); OrgEd.groups.forEach(function(g){ g.items.forEach(function(k){ used.add(k); }); });
+  return orgCurrent().filter(function(e){ return !used.has(orgKey(e)); }).sort(function(a, b){ return natural(a.number, b.number); }).map(orgKey);
+}
+function orgRemoveKeys(keys){ var s = new Set(keys); OrgEd.groups.forEach(function(g){ g.items = g.items.filter(function(k){ return !s.has(k); }); }); }
+function orgMoveKeys(keys, gi, beforeKey){
+  orgRemoveKeys(keys);
+  if (gi < 0) return;   // a «Sin clasificar»
+  var items = OrgEd.groups[gi].items, at = beforeKey ? items.indexOf(beforeKey) : -1;
+  if (at < 0) items.push.apply(items, keys); else items.splice.apply(items, [at, 0].concat(keys));
+}
+function orgChecked(){ return Array.prototype.map.call(document.querySelectorAll("#orgBody input.sel:checked"), function(c){ return c.value; }); }
+function orgRender(){
+  var body = $("orgBody"), ent = orgEntryByKey(), many = sourceCount() > 1, frag = document.createDocumentFragment();
+  var blocks = OrgEd.groups.map(function(g, gi){ return {gi:gi, g:g}; }).concat([{gi:-1, g:{name:ORG_NONE, items:orgUnassigned()}}]);
+  blocks.forEach(function(b){
+    var sec = document.createElement("section"); sec.className = "org-group"; sec.dataset.g = b.gi;
+    var head = document.createElement("div"); head.className = "org-head";
+    if (b.gi >= 0){
+      var nm = document.createElement("input"); nm.value = b.g.name; nm.setAttribute("aria-label", "Nombre del grupo");
+      nm.addEventListener("change", function(){ b.g.name = this.value.trim() || b.g.name; this.value = b.g.name; orgFillMove(); });
+      head.appendChild(nm);
+      [["↑", "Subir el grupo", -1], ["↓", "Bajar el grupo", 1]].forEach(function(x){
+        var bt = document.createElement("button"); bt.type = "button"; bt.textContent = x[0]; bt.title = x[1];
+        bt.addEventListener("click", function(){ var j = b.gi + x[2]; if (j < 0 || j >= OrgEd.groups.length) return; var t = OrgEd.groups[b.gi]; OrgEd.groups[b.gi] = OrgEd.groups[j]; OrgEd.groups[j] = t; orgRender(); });
+        head.appendChild(bt);
+      });
+      var del = document.createElement("button"); del.type = "button"; del.textContent = "×"; del.title = "Eliminar el grupo (sus láminas pasan a «Sin clasificar»)";
+      del.addEventListener("click", function(){ OrgEd.groups.splice(b.gi, 1); orgRender(); });
+      head.appendChild(del);
+    } else { var t = document.createElement("strong"); t.textContent = ORG_NONE; head.appendChild(t); }
+    var cnt = document.createElement("span"); cnt.className = "n"; cnt.textContent = b.g.items.length; head.appendChild(cnt);
+    sec.appendChild(head);
+    var ul = document.createElement("ul"); ul.className = "org-items";
+    b.g.items.forEach(function(k){
+      var e = ent.get(k); if (!e) return;   // lámina que ya no está publicada: se conserva en el grupo pero no se muestra
+      var li = document.createElement("li"); li.draggable = true; li.dataset.k = k;
+      var c = document.createElement("input"); c.type = "checkbox"; c.className = "sel"; c.value = k; c.setAttribute("aria-label", "Seleccionar " + e.number);
+      var s = document.createElement("span"); s.textContent = e.number + " · " + (e.name || "—");
+      li.appendChild(c); li.appendChild(s);
+      if (many){ var tg = document.createElement("span"); tg.className = "src"; tg.textContent = srcLabel(e.src); li.appendChild(tg); }
+      li.addEventListener("dragstart", function(ev){ OrgEd.dragKey = k; ev.dataTransfer.effectAllowed = "move"; try { ev.dataTransfer.setData("text/plain", k); } catch(x){} li.classList.add("dragging"); });
+      li.addEventListener("dragend", function(){ li.classList.remove("dragging"); });
+      ul.appendChild(li);
+    });
+    sec.addEventListener("dragover", function(ev){ if (OrgEd.dragKey){ ev.preventDefault(); sec.classList.add("over"); } });
+    sec.addEventListener("dragleave", function(){ sec.classList.remove("over"); });
+    sec.addEventListener("drop", function(ev){
+      ev.preventDefault(); sec.classList.remove("over");
+      var k = OrgEd.dragKey; OrgEd.dragKey = null; if (!k) return;
+      var before = ev.target.closest && ev.target.closest("li[data-k]"), keys = orgChecked();
+      if (keys.indexOf(k) < 0) keys = [k];
+      orgMoveKeys(keys, b.gi, before && before.dataset.k !== k ? before.dataset.k : null); orgRender();
+    });
+    sec.appendChild(ul); frag.appendChild(sec);
+  });
+  body.innerHTML = ""; body.appendChild(frag); orgFillMove();
+}
+function orgFillMove(){
+  var s = $("orgMove"); s.innerHTML = '<option value="">Mover las seleccionadas a…</option>';
+  OrgEd.groups.forEach(function(g, gi){ var o = document.createElement("option"); o.value = String(gi); o.textContent = g.name; s.appendChild(o); });
+  [["-1", ORG_NONE], ["new", "Nuevo grupo…"]].forEach(function(x){ var o = document.createElement("option"); o.value = x[0]; o.textContent = x[1]; s.appendChild(o); });
+}
+$("orgMove").addEventListener("change", function(){
+  var v = this.value, keys = orgChecked(); this.value = "";
+  if (!v) return;
+  if (!keys.length){ toast("Marca primero las láminas que quieres mover."); return; }
+  var gi = Number(v);
+  if (v === "new"){ var n = prompt("Nombre del nuevo grupo:"); if (!n || !n.trim()) return; OrgEd.groups.push({id:"g" + Date.now().toString(36), name:n.trim(), items:[]}); gi = OrgEd.groups.length - 1; }
+  orgMoveKeys(keys, gi, null); orgRender();
+});
+$("orgAdd").addEventListener("click", function(){
+  var n = prompt("Nombre del nuevo grupo:"); if (!n || !n.trim()) return;
+  OrgEd.groups.push({id:"g" + Date.now().toString(36), name:n.trim(), items:[]}); orgRender();
+});
+$("orgSeedGo").addEventListener("click", function(){ orgSeed($("orgSeed").value, false); });
+$("orgBtn").addEventListener("click", orgOpen);
+$("orgSave").addEventListener("click", function(){
+  var layout = {groups:OrgEd.groups.filter(function(g){ return g.name; }).map(function(g){ return {id:g.id, name:g.name, items:g.items}; })};
+  var done = function(x){
+    orgSet(x); $("orgDlg").close();
+    fillGroupBy(); $("groupBy").value = "__org"; renderSheetList();
+    toast("Organización guardada" + (S.online ? " para todo el proyecto." : " en este equipo."));
+  };
+  if (!S.online){
+    var x = {rev:(Org.rev || 0) + 1, updated:new Date().toISOString(), by:author(), layout:layout};
+    try { localStorage.setItem(orgLocalKey(), JSON.stringify(x)); } catch(e){}
+    done(x); return;
+  }
+  $("orgSave").disabled = true;
+  api("saveLayout", {project:S.project, layout:layout, baseRev:Org.rev}).then(function(r){
+    if (r.conflict){
+      orgSet(r.layout); fillGroupBy(); renderSheetList();
+      toast("Otra persona ha cambiado la organización mientras editabas. Se ha cargado la versión actual: revisa y vuelve a guardar.");
+      orgOpen(); return;
+    }
+    done(r.layout);
+  }).catch(function(e){ toast(errText(e)); }).then(function(){ $("orgSave").disabled = false; });
+});
+
 // ================================================================ impresión y paquetes de impresión
 var PrintSel = new Set();
 function pkgStoreKey(){ return "cr_visorobra_paquetes_" + (S.project || "local"); }
@@ -2457,8 +2742,8 @@ function renderPkgList(){
     var g = groupOf(e, mode); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(e);
   });
   var frag = document.createDocumentFragment();
-  Array.from(groups.keys()).sort(natural).forEach(function(g){
-    var items = groups.get(g);
+  orderedGroupNames(groups, mode).forEach(function(g){
+    var items = sortGroupItems(groups.get(g), mode);
     if (mode !== "none"){
       var gl = document.createElement("label"); gl.className = "g";
       var gc = document.createElement("input"); gc.type = "checkbox";
@@ -2726,8 +3011,15 @@ function goToSheetPoint(s){
     var k = (o[0]-m[0])*dv[0] + (o[1]-m[1])*dv[1] + (o[2]-m[2])*dv[2];
     start = [m[0]+dv[0]*k, m[1]+dv[1]*k, m[2]+dv[2]*k]; dir = [-dv[0],-dv[1],-dv[2]]; ctx = {kind:"section", origin:o, dir:dv};
   }
+  var srcCur = S.cur ? S.cur.src : "", startSrc = start.slice();
+  if (Frames.R.has(srcCur)){   // lámina de otro modelo: a las coordenadas de referencia
+    if (ctx.kind === "plan") ctx.cut = toRef(srcCur, [start[0], start[1], ctx.cut])[2];
+    else { ctx.origin = toRef(srcCur, ctx.origin); ctx.dir = toRefDir(srcCur, ctx.dir); }
+    start = toRef(srcCur, start); dir = toRefDir(srcCur, dir);
+  }
   S.ctx = ctx; updateClip();
   var rows = [["Vista", hit.view.name], ["Método", hit.method === "api" ? "API" : "cálculo por recorte"]], target = null;
+  if (sourceCount() > 1) rows.unshift(["Modelo del plano", srcLabel(srcCur)]);
   if (Model){
     var h = pick(internalToScene(start), internalDirToScene(dir), false);
     if (h){
@@ -2737,7 +3029,7 @@ function goToSheetPoint(s){
     }
   }
   if (!target){
-    var pp = [start[0], start[1], isPlan(hit) && hit.view.level_elevation_mm !== undefined ? hit.view.level_elevation_mm : start[2]];
+    var pp = toRef(srcCur, [startSrc[0], startSrc[1], isPlan(hit) && hit.view.level_elevation_mm !== undefined ? hit.view.level_elevation_mm : startSrc[2]]);
     rows.push(["X interna", fmtM(pp[0])], ["Y interna", fmtM(pp[1])], ["Z interna", fmtM(pp[2]) + (Model ? " (sin elemento debajo)" : "")]);
     target = internalToScene(pp);
   }
@@ -3206,7 +3498,7 @@ function loadModelSet(list){
   return list.reduce(function(p, it, i){
     return p.then(function(){
       var label = list.length > 1 ? "Modelo " + (i + 1) + " de " + list.length + " («" + it.name + "»)" : "";
-      return loadOne(it.file, it.geo, label, i).then(function(r){ out.push({key:it.key, name:it.name, file:it.file, instances:it.instances, m:r.m, how:r.how, kind:r.kind}); });
+      return loadOne(it.file, it.geo, label, i).then(function(r){ out.push(Object.assign({}, it, {m:r.m, how:r.how, kind:r.kind})); });
     });
   }, Promise.resolve()).then(function(){
     var total = secs(performance.now() - t0Load);
@@ -3229,11 +3521,16 @@ function loadIfc(file, geoFile){ return loadModelSet([{key:"", name:file.name, f
 var Model = null, Highlight = [], ModelMats = [];
 var MIRROR = new THREE.Matrix4().makeScale(-1, 1, 1);
 var Cm = new THREE.Matrix4().set(0.001,0,0,0, 0,0,0.001,0, 0,-0.001,0,0, 0,0,0,1), CmInv = Cm.clone().invert();
-function instMatrix(t){
-  if (!t) return new THREE.Matrix4();
+function mmMatrix(t){
   var bx = t.basis_x, by = t.basis_y, bz = t.basis_z, o = t.origin_mm;
-  var T = new THREE.Matrix4().set(bx[0],by[0],bz[0],o[0], bx[1],by[1],bz[1],o[1], bx[2],by[2],bz[2],o[2], 0,0,0,1);
-  return Cm.clone().multiply(T).multiply(CmInv);   // de coordenadas internas del vínculo a las del anfitrión, en la escena
+  return new THREE.Matrix4().set(bx[0],by[0],bz[0],o[0], bx[1],by[1],bz[1],o[1], bx[2],by[2],bz[2],o[2], 0,0,0,1);
+}
+// vínculo → anfitrión (t) y, si el modelo es de otro archivo, anfitrión → modelo de referencia (pre)
+function instMatrix(t, pre){
+  if (!t && !pre) return new THREE.Matrix4();
+  var T = t ? mmMatrix(t) : new THREE.Matrix4();
+  if (pre) T = mmMatrix(pre).multiply(T);
+  return Cm.clone().multiply(T).multiply(CmInv);
 }
 function disposeModel(){
   if (!Model) return;
@@ -3248,10 +3545,11 @@ function buildModel(list){
   list.forEach(function(it, mi){
     var m = it.m, n = m.ids.length;
     var insts = (it.instances && it.instances.length ? it.instances : [{id:0, name:"", transform:null}]).map(function(ins){
-      var W = instMatrix(ins.transform), F = W.clone().multiply(new THREE.Matrix4().makeTranslation(m.offset[0], m.offset[1], m.offset[2]));
+      var W = instMatrix(ins.transform, it.pre), F = W.clone().multiply(new THREE.Matrix4().makeTranslation(m.offset[0], m.offset[1], m.offset[2]));
       return {id:ins.id, name:ins.name || "", W:W, F:F, Finv:F.clone().invert(), nrm:new THREE.Matrix3().getNormalMatrix(F)};
     });
-    var md = {key:it.key || "", name:it.name || "", file:it.file, m:m, n:n, ids:m.ids, types:m.types, tags:m.tags, storeys:m.storeys,
+    var md = {key:it.key || "", src:it.src || "", propsFile:it.propsFile || null, propsKeys:it.propsKeys || "id",
+              name:it.name || "", file:it.file, m:m, n:n, ids:m.ids, types:m.types, tags:m.tags, storeys:m.storeys,
               storeyOrder:m.storeyOrder || [], ranges:new Array(n), visible:new Uint8Array(n).fill(1), parts:[], instances:insts, first:M.n};
     for (var i = 0; i < n; i++) md.ranges[i] = [];
     m.parts.forEach(function(p, pi){
@@ -3313,7 +3611,11 @@ function buildModel(list){
 }
 function entryOf(mi, k, i){ var md = Model.models[mi]; return md.first + k * md.n + i; }
 // clave de visibilidad: un elemento de un vínculo se oculta en todas sus copias
-function elemKey(mi, i){ var md = Model.models[mi]; return Model.single ? String(md.ids[i]) : (md.key || "H") + ":" + md.ids[i]; }
+function elemKey(mi, i){
+  var md = Model.models[mi];
+  if (Model.single) return String(md.ids[i]);
+  return (md.src && md.src !== Frames.ref ? md.src + "/" : "") + (md.key || "H") + ":" + md.ids[i];
+}
 function entryModel(e){ return Model.models[Model.eModel[e]]; }
 function applyDrawLists(){
   Model.models.forEach(function(md){
@@ -3420,13 +3722,14 @@ function sheetsShowing(m){
   var out = [];
   Lib.entries.forEach(function(e){
     if (!e.current || !e.loc) return;
+    var ms = fromRef(e.src, m);   // punto en las coordenadas del modelo de esa lámina
     e.loc.viewports.forEach(function(v){
       if (!v.regions || !v.regions.length) return;
-      var s = apply(v.regions[0].model_to_sheet, m), b = v.box_sheet_mm;
+      var s = apply(v.regions[0].model_to_sheet, ms), b = v.box_sheet_mm;
       if (!b || s[0] < b.min[0] || s[0] > b.max[0] || s[1] < b.min[1] || s[1] > b.max[1]) return;
       var score;
       if (isPlan(v) && v.view.level_elevation_mm !== undefined){
-        var dz = m[2] - v.view.level_elevation_mm; if (dz < -150 || dz > 6000) return; score = dz;
+        var dz = ms[2] - v.view.level_elevation_mm; if (dz < -150 || dz > 6000) return; score = dz;
       } else score = 1e7;
       out.push({e:e, v:v, s:s, score:score});
     });
@@ -3460,6 +3763,19 @@ function scrollToSheetPoint(s){
 // ---- propiedades de Revit (archivo _PROPS.json.gz exportado por el script)
 var RevitProps = {file:null, data:null, loading:null};
 function resetRevitProps(f){ RevitProps = {file:f || null, data:null, loading:null}; }
+// propiedades por modelo de origen (cada publicación trae su archivo); se guardan leídas mientras dure la sesión
+var PropsCache = new Map();
+function loadRevitPropsFor(md){
+  var f = md && (md.propsFile || (Model && Model.models.length === 1 ? RevitProps.file : null));
+  if (!f) return Promise.resolve(null);
+  var k = f.id || f.name, c = PropsCache.get(k);
+  if (c) return c.data ? Promise.resolve(c.data) : c.loading;
+  c = {data:null};
+  c.loading = f.arrayBuffer().then(gunzip).then(function(ab){ c.data = JSON.parse(new TextDecoder("utf-8").decode(ab)); return c.data; })
+    .catch(function(e){ console.warn("propiedades de Revit:", e); PropsCache.delete(k); return null; });
+  PropsCache.set(k, c);
+  return c.loading;
+}
 function loadRevitProps(){
   if (RevitProps.data) return Promise.resolve(RevitProps.data);
   if (!RevitProps.file) return Promise.resolve(null);
@@ -3513,10 +3829,10 @@ function selectElement(id){
   if (id === null || id === undefined || !Model){ S.selectedId = null; setHighlight(-1); $("elemBox").innerHTML = '<p class="hint">Ningún elemento seleccionado.</p>'; return; }
   setHighlight(id);
   var md = entryModel(id), i = Model.eElem[id], tag = md.tags[i];
-  var pkey = S.manifest && S.manifest.props_keys === "modelo" ? (md.key || "H") + ":" + tag : tag;
+  var pkey = md.propsKeys === "modelo" ? (md.key || "H") + ":" + tag : tag;
   var box = $("elemBox");
   box.innerHTML = '<p class="hint">Leyendo propiedades…</p>';
-  loadRevitProps().then(function(d){
+  loadRevitPropsFor(md).then(function(d){
     if (S.selectedId !== id) return;
     var rec = d && tag ? d.elems[pkey] : null;
     if (rec) renderRevitProps(d, rec, tag, id); else showIfcProps(id);
@@ -3524,7 +3840,9 @@ function selectElement(id){
 }
 function originRows(id){
   if (!Model || Model.single) return [];
-  var md = entryModel(id), ins = md.instances[Model.eInst[id]], rows = [["Modelo", md.key === "H" ? "Anfitrión · " + md.name : md.name]];
+  var md = entryModel(id), ins = md.instances[Model.eInst[id]], rows = [];
+  if (sourceCount() > 1) rows.push(["Disciplina", srcLabel(md.src)]);
+  rows.push(["Modelo", md.key === "H" ? "Anfitrión · " + md.name : md.name]);
   if (md.instances.length > 1) rows.push(["Copia", (ins.name || "copia") + " (" + (Model.eInst[id] + 1) + " de " + md.instances.length + ")"]);
   return rows;
 }
@@ -3643,7 +3961,7 @@ var CAT_ES = {IFCWALL:"Muros", IFCWALLSTANDARDCASE:"Muros", IFCCURTAINWALL:"Muro
 var DEFAULT_HIDDEN = {"Espacios":true, "Huecos":true};
 var Vis = {hiddenIds:{}, hiddenCats:{}, hiddenStoreys:{}, isolated:null, cat:[], storey:[]};
 function indexModel(){
-  Vis = {hiddenIds:{}, hiddenCats:Object.assign({}, DEFAULT_HIDDEN), hiddenStoreys:{}, isolated:null, cat:[], storey:[]};
+  Vis = {hiddenIds:{}, hiddenCats:Object.assign({}, DEFAULT_HIDDEN), hiddenStoreys:{}, hiddenSrc:{}, isolated:null, cat:[], storey:[]};
   clearSections();
   var cc = {}, sc = {}, none = 0, order = [];
   Model.models.forEach(function(md, mi){
@@ -3659,6 +3977,9 @@ function indexModel(){
   var st = order.filter(function(n){ return sc[n]; }).map(function(n){ return {key:n, label:n, n:sc[n]}; });
   if (none) st.push({key:"__none", label:"Sin planta (emplazamiento, terreno…)", n:none});
   renderChecks("storeyList", st, "hiddenStoreys");
+  var sc2 = new Map(); Model.models.forEach(function(md){ sc2.set(md.src || "", (sc2.get(md.src || "") || 0) + md.n * md.instances.length); });
+  $("srcSec").hidden = sc2.size < 2;
+  renderChecks("srcList", Array.from(sc2.keys()).sort(natural).map(function(s){ return {key:s, label:srcLabel(s), n:sc2.get(s)}; }), "hiddenSrc");
   refreshVisibility();
 }
 function renderChecks(holder, items, mapName){
@@ -3676,15 +3997,16 @@ function renderChecks(holder, items, mapName){
 function syncChecks(){
   document.querySelectorAll("#catList input").forEach(function(c){ c.checked = !Vis.hiddenCats[c.dataset.key]; });
   document.querySelectorAll("#storeyList input").forEach(function(c){ c.checked = !Vis.hiddenStoreys[c.dataset.key]; });
+  document.querySelectorAll("#srcList input").forEach(function(c){ c.checked = !Vis.hiddenSrc[c.dataset.key]; });
 }
 function refreshVisibility(){
   if (!Model) return;
   var hidden = 0;
   Model.models.forEach(function(md, mi){
-    var V = md.visible, cats = Vis.cat[mi], sts = Vis.storey[mi];
+    var V = md.visible, cats = Vis.cat[mi], sts = Vis.storey[mi], srcOff = !!Vis.hiddenSrc[md.src || ""];
     for (var i = 0; i < md.n; i++){
       var k = elemKey(mi, i);
-      var v = !(Vis.hiddenIds[k] || Vis.hiddenCats[cats[i]] || Vis.hiddenStoreys[sts[i]] || (Vis.isolated && !Vis.isolated[k]));
+      var v = !(srcOff || Vis.hiddenIds[k] || Vis.hiddenCats[cats[i]] || Vis.hiddenStoreys[sts[i]] || (Vis.isolated && !Vis.isolated[k]));
       V[i] = v ? 1 : 0; if (!v) hidden += md.instances.length;
     }
   });
@@ -3696,7 +4018,7 @@ function refreshVisibility(){
 function selectedKey(){ return S.selectedId === null || S.selectedId === undefined ? null : elemKey(Model.eModel[S.selectedId], Model.eElem[S.selectedId]); }
 function hideSelected(){ var k = selectedKey(); if (k === null) return; Vis.hiddenIds[k] = true; refreshVisibility(); }
 function isolateSelected(){ var k = selectedKey(); if (k === null) return; Vis.isolated = {}; Vis.isolated[k] = true; refreshVisibility(); }
-function showAll(){ Vis.hiddenIds = {}; Vis.isolated = null; Vis.hiddenStoreys = {}; Vis.hiddenCats = Object.assign({}, DEFAULT_HIDDEN); syncChecks(); refreshVisibility(); }
+function showAll(){ Vis.hiddenIds = {}; Vis.isolated = null; Vis.hiddenStoreys = {}; Vis.hiddenSrc = {}; Vis.hiddenCats = Object.assign({}, DEFAULT_HIDDEN); syncChecks(); refreshVisibility(); }
 $("hideSel").addEventListener("click", hideSelected);
 $("isoSel").addEventListener("click", isolateSelected);
 $("showAll").addEventListener("click", showAll);
@@ -3712,13 +4034,13 @@ window.addEventListener("keydown", function(e){
   else if (e.key === "PageUp"){ e.preventDefault(); stepSheet(-1); }
 });
 function getViewState(){
-  return {hiddenIds:Object.keys(Vis.hiddenIds), hiddenCats:Object.keys(Vis.hiddenCats), hiddenStoreys:Object.keys(Vis.hiddenStoreys),
+  return {hiddenIds:Object.keys(Vis.hiddenIds), hiddenCats:Object.keys(Vis.hiddenCats), hiddenStoreys:Object.keys(Vis.hiddenStoreys), hiddenSrc:Object.keys(Vis.hiddenSrc || {}),
           isolated:Vis.isolated ? Object.keys(Vis.isolated) : null, box:JSON.parse(JSON.stringify(Sec.box)), face:JSON.parse(JSON.stringify(Sec.face))};
 }
 function setViewState(v){
   if (!v || !Model) return;
   function toMap(a){ var m = {}; (a || []).forEach(function(k){ m[k] = true; }); return m; }
-  Vis.hiddenIds = toMap(v.hiddenIds); Vis.hiddenCats = toMap(v.hiddenCats); Vis.hiddenStoreys = toMap(v.hiddenStoreys);
+  Vis.hiddenIds = toMap(v.hiddenIds); Vis.hiddenCats = toMap(v.hiddenCats); Vis.hiddenStoreys = toMap(v.hiddenStoreys); Vis.hiddenSrc = toMap(v.hiddenSrc);
   Vis.isolated = v.isolated ? toMap(v.isolated) : null;
   syncChecks(); refreshVisibility();
   if (v.box){ Sec.box = v.box; syncBoxInputs(); updateBox(); }
@@ -3737,7 +4059,7 @@ function runExportCheck(){
   if (!Model || !S.manifest || !S.manifest.check_elements || !S.manifest.check_elements.length) return;
   if (!tagMap){
     tagMap = new Map();
-    var hi = Model.models.findIndex(function(md){ return md.key === "" || md.key === "H"; });
+    var hi = Model.models.findIndex(function(md){ return (md.key === "" || md.key === "H") && (md.src || "") === (Frames.ref || ""); });
     if (hi >= 0){ var hm = Model.models[hi]; for (var i = 0; i < hm.n; i++) if (hm.tags[i]) tagMap.set(hm.tags[i], entryOf(hi, 0, i)); }
   }
   var res = [], cats = {};
@@ -3892,7 +4214,7 @@ function newIssueBase(){
   return {id:uid(), number:S.online ? "(nueva)" : nextNumber(), title:"", description:"", assigned:AGENTS[0], priority:"Media", status:"Abierta", due:"", author:S.online && Auth.user ? Auth.user.name : author(),
     created_at:nowIso(), updated_at:nowIso(), project:projectInfo(), sheet:null, cloud_mm:null, view_name:"", model_point_mm:null, camera:null, images:{}, comments:[], _new:true};
 }
-function sheetRef(e){ e = e || S.cur; return e ? {number:e.number, name:e.name, revision:e.revision || "", published:e.published || "", version:e.path || ""} : null; }
+function sheetRef(e){ e = e || S.cur; return e ? {number:e.number, name:e.name, revision:e.revision || "", published:e.published || "", version:e.path || "", src:e.src || ""} : null; }
 function cameraState(){ return {position_mm:sceneToInternal(camera.position), target_mm:sceneToInternal(controls.target), view:getViewState()}; }
 function downscale(src, sx, sy, sw, sh, cloudOnCrop, bg){
   var k = Math.min(1, 720 / sw), c = document.createElement("canvas");
@@ -3964,7 +4286,7 @@ function openDialog(it){
   $("fPrio").value = it.priority; $("fStatus").value = it.status; $("fDue").value = it.due || ""; $("fComment").value = "";
   var meta = [];
   if (it.sheet){
-    var made = Lib.versionFor(it.sheet), cur = Lib.currentOf(it.sheet.number);
+    var made = Lib.versionFor(it.sheet), cur = Lib.currentOf(it.sheet.number, it.sheet.src);
     meta.push("Lámina " + it.sheet.number + (it.sheet.revision ? " R" + it.sheet.revision : "") + (made && made.versions && made.versions.length > 1 ? " (v" + made.vno + ")" : ""));
     if (cur && made && cur !== made && !sameVersion(it, cur)) meta.push("vigente v" + cur.vno + (cur.revision ? " R" + cur.revision : ""));
   }
