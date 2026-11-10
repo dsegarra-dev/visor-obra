@@ -219,6 +219,28 @@ dialog h3{margin:0 0 12px;font-size:16px;font-weight:600}
 .body.mode-sheet{grid-template-columns:minmax(0,1fr) 300px}
 .body.mode-model{grid-template-columns:minmax(0,1fr) 300px}
 .body.mode-sheet .pane-model,.body.mode-model .pane-sheet{display:none}
+.pane-com{display:none}
+.body.mode-com{grid-template-columns:minmax(0,1fr)}
+.body.mode-com .pane-sheet,.body.mode-com .pane-model,.body.mode-com aside{display:none}
+.body.mode-com .pane-com{display:flex;flex-direction:column;min-height:0}
+.com-bar{flex-wrap:wrap;row-gap:6px}
+.com-bar input[type=search]{flex:1 1 260px;min-width:180px;border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:13px;background:var(--panel);color:var(--ink)}
+.com-table-wrap{flex:1;overflow:auto;padding:0 12px 12px}
+.com-table{width:100%;border-collapse:collapse;font-size:13px}
+.com-table th{position:sticky;top:0;background:var(--panel);text-align:left;font-weight:600;color:var(--muted);padding:8px 8px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap;user-select:none}
+.com-table th[aria-sort=ascending]::after{content:" ▲";font-size:10px}
+.com-table th[aria-sort=descending]::after{content:" ▼";font-size:10px}
+.com-table td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+.com-table tbody tr{cursor:pointer}
+.com-table tbody tr:hover{background:var(--bg)}
+.com-table tr.unread td{font-weight:700}
+.com-table td.num{white-space:nowrap;font-variant-numeric:tabular-nums}
+.com-table td .badge{font-size:10.5px;font-weight:700;border:1px solid var(--line);border-radius:4px;padding:0 4px;color:var(--muted)}
+.com-table td .st{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.com-table td .st i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.com-table td.late{color:var(--err);font-weight:600}
+.com-table td small{color:var(--muted);font-weight:400}
+.del-opts{border:0;padding:0;margin:4px 0 8px;display:grid;gap:6px;font-size:13px}
 @media (max-width:1180px){ .body.mode-sheet,.body.mode-model{grid-template-columns:minmax(0,1fr)} }
 @media (max-width:760px){ .body.mode-sheet .pane-sheet,.body.mode-model .pane-model{height:80vh} }
 .login{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:24px}
@@ -255,6 +277,7 @@ dialog h3{margin:0 0 12px;font-size:16px;font-weight:600}
       <button data-mode="split" aria-pressed="true" title="Plano y modelo (tecla 1)">Dividida</button>
       <button data-mode="sheet" aria-pressed="false" title="Solo el plano (tecla 2)">Plano</button>
       <button data-mode="model" aria-pressed="false" title="Solo el modelo (tecla 3)">Modelo 3D</button>
+      <button data-mode="com" aria-pressed="false" title="Todas las comunicaciones a pantalla completa (tecla 4)">Comunicaciones</button>
     </div>
     <label class="ctl" id="projWrap" hidden>Proyecto <select id="projSel" aria-label="Proyecto"></select></label>
     <span class="role" id="roleBadge" hidden></span>
@@ -277,6 +300,7 @@ dialog h3{margin:0 0 12px;font-size:16px;font-weight:600}
         <span class="tools">
           <button id="cloudBtn" aria-pressed="false" title="Arrastra sobre el plano para dibujar una nube y crear una incidencia">Nube</button>
           <button id="printBtn" title="Imprimir o descargar esta lámina">Imprimir</button>
+          <button id="delSheetBtn" class="danger" title="Eliminar esta lámina o esta versión (solo el jefe de proyecto)" hidden>Eliminar…</button>
           <button id="m2Btn" aria-pressed="false" aria-controls="m2Panel">Medir</button>
           <button id="zOut" aria-label="Alejar">−</button>
           <span class="zoom" id="zLbl">—</span>
@@ -372,6 +396,26 @@ dialog h3{margin:0 0 12px;font-size:16px;font-weight:600}
       </div>
     </section>
 
+    <section class="pane pane-com" aria-label="Comunicaciones">
+      <div class="pane-bar com-bar">
+        <span class="t" id="cvTitle">Comunicaciones</span>
+        <input type="search" id="cvSearch" placeholder="Buscar en número, asunto, personas o texto" aria-label="Buscar comunicaciones">
+        <select id="cvStatus" aria-label="Estado"><option value="open">Pendientes</option><option value="late">Vencidas</option><option value="unread">Sin leer</option><option value="all">Todas</option></select>
+        <select id="cvType" aria-label="Tipo"></select>
+        <label class="ctl"><input type="checkbox" id="cvMine"> Para mí</label>
+        <button id="cvNew" type="button" class="primary">+ Nueva</button>
+      </div>
+      <div class="com-table-wrap">
+        <table class="com-table" id="cvTable">
+          <thead><tr>
+            <th data-k="number">Nº</th><th data-k="type">Tipo</th><th data-k="title">Asunto</th><th data-k="author">De</th><th data-k="to">Para</th>
+            <th data-k="status">Estado</th><th data-k="due">Plazo</th><th data-k="sheet">Lámina</th><th data-k="updated_at">Actualizada</th>
+          </tr></thead>
+          <tbody id="cvBody"></tbody>
+        </table>
+        <p class="hint" id="cvEmpty" hidden></p>
+      </div>
+    </section>
     <aside>
       <section>
         <div class="com-head"><h2 id="comH">Comunicaciones</h2><button id="incNew" type="button" class="primary" title="Consulta, orden, envío de documentación o aviso (no hace falta un plano)">+ Nueva</button></div>
@@ -431,6 +475,22 @@ dialog h3{margin:0 0 12px;font-size:16px;font-weight:600}
       <button type="button" id="incGo">Ir al punto</button>
       <button value="cancel" formnovalidate>Cancelar</button>
       <button value="save" class="primary">Guardar</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="delDlg" aria-labelledby="delH">
+  <form method="dialog" id="delForm">
+    <h3 id="delH">Eliminar lámina</h3>
+    <fieldset class="del-opts">
+      <label class="chk"><input type="radio" name="delScope" value="version" checked> <span id="delOptVer"></span></label>
+      <label class="chk"><input type="radio" name="delScope" value="all"> <span id="delOptAll"></span></label>
+    </fieldset>
+    <label class="field">Motivo (queda registrado)<textarea id="delReason" rows="2" required maxlength="500" placeholder="p. ej. publicada por error, sustituida por la E-04"></textarea></label>
+    <p class="hint">El PDF va a la papelera de Drive (recuperable durante 30 días) y queda anotado quién la eliminó, cuándo y por qué. Las comunicaciones que la citan se conservan.</p>
+    <div class="dlg-actions">
+      <span class="spacer"></span>
+      <button value="cancel" formnovalidate>Cancelar</button>
+      <button value="delete" class="danger" id="delGo">Eliminar</button>
     </div>
   </form>
 </dialog>
@@ -1814,7 +1874,7 @@ var CONFIG = {
   var q = new URLSearchParams(location.search), api = q.get("api");
   if (api && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(api)){ CONFIG.API_URL = api; CONFIG.DEV = true; }
 })();
-var ERR = {tipo_no_permitido:"Las órdenes solo las emite el equipo del despacho.", adjunto_no_valido:"Uno de los adjuntos no se ha subido bien: vuelve a añadirlo.",
+var ERR = {solo_jefe_proyecto:"Solo el jefe de proyecto puede hacer esto.", falta_motivo:"Indica el motivo.", tipo_no_permitido:"Las órdenes solo las emite el equipo del despacho.", adjunto_no_valido:"Uno de los adjuntos no se ha subido bien: vuelve a añadirlo.",
   adjunto_demasiado_grande:"El adjunto supera el máximo de 300 MB.", subida_caducada:"La subida ha tardado demasiado: vuelve a guardar.",
   sin_sesion:"Inicia sesión para continuar.", sesion_caducada:"Tu sesión ha caducado.", sesion_no_valida:"La sesión no es válida para este visor.",
   sin_permiso:"No tienes permiso para esto en este proyecto.", sin_permiso_estado:"Tu rol no permite ese cambio de estado.",
@@ -2001,7 +2061,7 @@ var Can = {create:false, close:false, del:false};
 function applyRole(){
   var r = S.role;
   Can.create = r === "agente" || r === "equipo"; Can.close = r === "equipo"; Can.del = r === "equipo";
-  $("incNew").hidden = !Can.create;
+  $("incNew").hidden = !Can.create; $("cvNew").hidden = !Can.create;
   $("cloudBtn").hidden = !Can.create; $("shotBtn").hidden = !Can.create;
   $("incExport").hidden = r !== "equipo";
   $("roleBadge").hidden = !r; $("roleBadge").textContent = {equipo:"Equipo CEL-RAS", agente:"Agente", consulta:"Consulta"}[r] || "";
@@ -2071,7 +2131,7 @@ function openProject(code){
     Issues = d.issues.filter(function(i){ return !i.deleted; });
     Sync.since = d.issues.reduce(function(m, i){ return i.updated_at > m ? i.updated_at : m; }, "");
     orgSet(d.layout || null);
-    S.members = d.members || [];
+    S.members = d.members || []; S.jp = !!d.jp; S.removed = d.removed || [];
     renderIssueList();
     var indices = [], locs = [], modelos = [], ifcs = [], geos = [], propsFiles = [];
     d.files.forEach(function(f){
@@ -2379,7 +2439,7 @@ var Lib = {
     if (includeOrphans === undefined) includeOrphans = true;
     var used = new Set(), entries = [], keys = new Set(), self = this;
     computeFrames();
-    var known = Frames.known;
+    var known = Frames.known, gone = removedKeys();
     this.locs.forEach(function(v, key){
       var d = v.loc, pf = (d.pdf_file || "").toLowerCase(), k = v.path + "|" + pf, file = self.pdfs.get(k);
       if (!file){ var base = v.name.replace(/_LOC\.json$/i, "").toLowerCase() + ".pdf"; k = v.path + "|" + base; file = self.pdfs.get(k); }
@@ -2388,6 +2448,7 @@ var Lib = {
       var params = d.sheet.params || {};
       Object.keys(params).forEach(function(x){ keys.add(x); });
       var src = resolveSrc(d, known);
+      if (gone.has((src ? src + "§" : "") + key)) return;   // eliminada por el jefe de proyecto
       entries.push({key:(src ? src + "§" : "") + key, src:src, number:d.sheet.number, name:d.sheet.name || "", revision:d.sheet.revision || "", loc:d, file:file || null,
                     params:params, path:v.path, published:d.generated || (file && file.modified) || ""});
     });
@@ -2559,7 +2620,7 @@ var openSeq = 0;
 function openSheet(e){
   if (!e.file){ toast("Falta el PDF de la lámina " + e.number + " en el paquete."); return Promise.resolve(); }
   var seq = ++openSeq;
-  S.cur = e; S.loc = e.loc; sharedInv = null;
+  S.cur = e; S.loc = e.loc; sharedInv = null; updateDeleteBtn();
   S.pickSheet = null; S.modelSheet = null;
   $("sheetTitle").textContent = e.number + (e.name ? " · " + e.name : "") + (e.revision ? " · R" + e.revision : "") + (e.current ? "" : " (superada)");
   $("sheetTitle").title = $("sheetTitle").textContent + (e.published ? " · publicada el " + fmtPub(e.published) : "");
@@ -2585,17 +2646,18 @@ function prefetchAround(e){
 
 // ================================================================ modo de vista: dividida / plano / modelo
 function setMode(mode){
-  if (["split", "sheet", "model"].indexOf(mode) < 0) mode = "split";
+  if (["split", "sheet", "model", "com"].indexOf(mode) < 0) mode = "split";
   var body = document.querySelector(".body");
-  body.classList.remove("mode-split", "mode-sheet", "mode-model"); body.classList.add("mode-" + mode);
+  body.classList.remove("mode-split", "mode-sheet", "mode-model", "mode-com"); body.classList.add("mode-" + mode);
   document.querySelectorAll(".seg button").forEach(function(b){ b.setAttribute("aria-pressed", b.dataset.mode === mode ? "true" : "false"); });
   try { localStorage.setItem("cr_visorobra_vista", mode); } catch(e){}
   S.mode = mode;
+  if (mode === "com") renderComView();
   setTimeout(function(){ resize(); if (S.page) refit(); requestRender(); }, 0);
 }
 document.querySelectorAll(".seg button").forEach(function(b){ b.addEventListener("click", function(){ setMode(b.dataset.mode); }); });
-function needSheet(){ if (S.mode === "model") setMode("split"); }
-function needModel(){ if (S.mode === "sheet") setMode("split"); }
+function needSheet(){ if (S.mode === "model" || S.mode === "com") setMode("split"); }
+function needModel(){ if (S.mode === "sheet" || S.mode === "com") setMode("split"); }
 
 // acceso de diagnóstico para las pruebas automáticas: solo existe con un servidor local (?api=http://localhost…)
 if (CONFIG.DEV) window.__crvisor = {
@@ -2617,7 +2679,7 @@ function orgSet(x){
 }
 function orgLocalKey(){ return "cr_visorobra_org_" + (S.project || "local"); }
 function orgLoadLocal(){ try { var x = JSON.parse(localStorage.getItem(orgLocalKey()) || "null"); orgSet(x); } catch(e){ orgSet(null); } }
-function canOrganize(){ return !S.online || S.role === "equipo"; }
+function canOrganize(){ return !S.online || !!S.jp; }
 // orden de los grupos y de las láminas dentro de cada grupo según el modo de agrupación
 function orderedGroupNames(groups, mode){
   var names = Array.from(groups.keys());
@@ -4067,6 +4129,7 @@ window.addEventListener("keydown", function(e){
   else if (e.key === "1") setMode("split");
   else if (e.key === "2") setMode("sheet");
   else if (e.key === "3") setMode("model");
+  else if (e.key === "4") setMode("com");
   else if (e.key === "PageDown"){ e.preventDefault(); stepSheet(1); }
   else if (e.key === "PageUp"){ e.preventDefault(); stepSheet(-1); }
 });
@@ -4354,6 +4417,105 @@ function newCommunication(){
 $("incNew").addEventListener("click", newCommunication);
 ["fltType", "fltMine"].forEach(function(id){ $(id).addEventListener("change", function(){ renderIssueList(); }); });
 
+// ================================================================ eliminar láminas (solo el jefe de proyecto)
+function removedKeys(){ return new Set((S.removed || []).map(function(r){ return (r.src ? r.src + "§" : "") + r.number + "|" + (r.path || ""); })); }
+function updateDeleteBtn(){ $("delSheetBtn").hidden = !(S.online && S.jp && S.cur && S.cur.loc); }
+$("delSheetBtn").addEventListener("click", function(){
+  var e = S.cur; if (!e) return;
+  var vers = e.versions || [e], others = vers.filter(function(v){ return v !== e; });
+  $("delH").textContent = "Eliminar " + e.number + (e.name ? " · " + e.name : "");
+  $("delOptVer").textContent = "Solo esta versión: v" + (e.vno || 1) + (e.revision ? " · R" + e.revision : "") + (e.published ? " · " + fmtPubShort(e.published) : "") +
+    (others.length ? (e.current ? " — volverá a ser vigente la versión anterior" : "") : " — es la única: la lámina desaparece del visor");
+  $("delOptAll").textContent = "La lámina entera, con " + (vers.length === 1 ? "su única versión" : "sus " + vers.length + " versiones");
+  document.querySelector("input[name=delScope][value=version]").checked = true;
+  $("delReason").value = "";
+  $("delDlg").showModal();
+});
+$("delForm").addEventListener("submit", function(ev){
+  if (!ev.submitter || ev.submitter.value !== "delete") return;
+  ev.preventDefault();
+  var e = S.cur, scope = document.querySelector("input[name=delScope]:checked").value, reason = $("delReason").value.trim();
+  if (!e || !reason){ toast("Indica el motivo."); return; }
+  var vers = scope === "all" ? (e.versions || [e]) : [e], number = e.number, src = e.src || "";
+  var btn = $("delGo"); btn.disabled = true; btn.textContent = "Eliminando…";
+  api("deleteSheet", {project:S.project, scope:scope, reason:reason, versions:vers.map(function(v){
+    return {number:v.number, src:v.src || "", path:v.path || "", revision:v.revision || "", pdf:v.file && v.file.id ? v.file.id : null};
+  })}).then(function(r){
+    S.removed = r.removed || [];
+    $("delDlg").close();
+    Lib.rebuild(); renderSheetList(); renderPkg();
+    var next = Lib.currentOf(number, src) || flatList[0] || null;
+    if (next) openSheet(next);
+    else { S.cur = null; S.loc = null; S.page = null; $("sheetTitle").textContent = "Sin lámina"; $("wrap").hidden = true; $("pdfEmpty").hidden = false; drawOverlay(); updateDeleteBtn(); }
+    toast(scope === "all" ? "Lámina " + number + " eliminada." : "Versión de " + number + " eliminada.");
+  }).catch(function(err){ toast(errText(err)); }).then(function(){ btn.disabled = false; btn.textContent = "Eliminar"; });
+});
+
+// ================================================================ vista completa de comunicaciones
+var CV = {sort:"updated_at", dir:-1};
+(function(){
+  var f = $("cvType"); f.innerHTML = '<option value="">Todos los tipos</option>';
+  COM_TYPES.forEach(function(x){ var o = document.createElement("option"); o.value = x[0]; o.textContent = x[1]; f.appendChild(o); });
+})();
+function cvValue(i, k){
+  if (k === "number") return parseInt(String(i.number).replace(/\D/g, ""), 10) || 0;
+  if (k === "type") return COM_LABEL[typeOf(i)] || "";
+  if (k === "to") return peopleText(i.to);
+  if (k === "sheet") return i.sheet ? i.sheet.number : "";
+  if (k === "due") return i.due || "9999";
+  return String(i[k] || "").toLowerCase();
+}
+function renderComView(){
+  if (S.mode !== "com") return;
+  var q = $("cvSearch").value.trim().toLowerCase(), st = $("cvStatus").value, ty = $("cvType").value, mine = $("cvMine").checked;
+  var list = Issues.filter(function(i){
+    if (st === "open" && i.status === "Cerrada" && !isUnread(i)) return false;
+    if (st === "late" && !isLate(i)) return false;
+    if (st === "unread" && !isUnread(i)) return false;
+    if (ty && typeOf(i) !== ty) return false;
+    if (mine && !isForMe(i)) return false;
+    if (q){
+      var hay = [i.number, i.title, i.description, i.author, i.author_email, peopleText(i.to), peopleText(i.cc), i.sheet ? i.sheet.number : "",
+                 (i.attachments || []).map(function(a){ return a.name; }).join(" "), (i.comments || []).map(function(c){ return c.text; }).join(" ")].join(" ").toLowerCase();
+      if (hay.indexOf(q) < 0) return false;
+    }
+    return true;
+  });
+  list.sort(function(a, b){ var x = cvValue(a, CV.sort), y = cvValue(b, CV.sort); return (x < y ? -1 : x > y ? 1 : 0) * CV.dir; });
+  var unread = Issues.filter(isUnread).length, late = Issues.filter(isLate).length;
+  $("cvTitle").textContent = "Comunicaciones · " + list.length + " de " + Issues.length + (unread ? " · " + unread + " sin leer" : "") + (late ? " · " + late + " vencidas" : "");
+  document.querySelectorAll("#cvTable th").forEach(function(th){ th.setAttribute("aria-sort", th.dataset.k === CV.sort ? (CV.dir > 0 ? "ascending" : "descending") : "none"); });
+  var body = $("cvBody"), frag = document.createDocumentFragment();
+  list.forEach(function(i){
+    var tr = document.createElement("tr"); tr.dataset.id = i.id; tr.tabIndex = 0; if (isUnread(i)) tr.className = "unread";
+    var td = function(content, cls){ var c = document.createElement("td"); if (cls) c.className = cls; if (typeof content === "string") c.textContent = content; else c.appendChild(content); tr.appendChild(c); return c; };
+    td(i.number + ((i.attachments || []).length ? " 📎" : ""), "num");
+    var bd = document.createElement("span"); bd.className = "badge"; bd.textContent = COM_SHORT[typeOf(i)] || "INC"; bd.title = COM_LABEL[typeOf(i)] || ""; td(bd);
+    var as = document.createElement("span"); as.textContent = i.title || "Sin título";
+    if ((i.comments || []).length){ var sm = document.createElement("small"); sm.textContent = " · " + i.comments.length + (i.comments.length === 1 ? " mensaje" : " mensajes"); as.appendChild(sm); }
+    td(as);
+    td(i.author || "");
+    td(peopleText(i.to) || "—");
+    var stt = document.createElement("span"); stt.className = "st"; var dot = document.createElement("i"); dot.style.background = cssVar(STATUS_VAR[i.status] || "--err");
+    stt.appendChild(dot); stt.appendChild(document.createTextNode(i.status)); td(stt);
+    td(i.due ? (isLate(i) ? "vencida " : "") + i.due.split("-").reverse().join("/") : "—", isLate(i) ? "late" : "");
+    td(i.sheet ? i.sheet.number : "—");
+    td(fmtDate(i.updated_at));
+    frag.appendChild(tr);
+  });
+  body.innerHTML = ""; body.appendChild(frag);
+  $("cvEmpty").hidden = list.length > 0;
+  $("cvEmpty").textContent = Issues.length ? "Ninguna comunicación con estos filtros." : "Aún no hay comunicaciones en este proyecto.";
+}
+$("cvBody").addEventListener("click", function(ev){ var tr = ev.target.closest("tr[data-id]"); if (!tr) return; var it = Issues.filter(function(i){ return i.id === tr.dataset.id; })[0]; if (it) openDialog(it); });
+$("cvBody").addEventListener("keydown", function(ev){ if (ev.key !== "Enter") return; var tr = ev.target.closest("tr[data-id]"); if (!tr) return; var it = Issues.filter(function(i){ return i.id === tr.dataset.id; })[0]; if (it) openDialog(it); });
+document.querySelectorAll("#cvTable th").forEach(function(th){
+  th.addEventListener("click", function(){ if (CV.sort === th.dataset.k) CV.dir = -CV.dir; else { CV.sort = th.dataset.k; CV.dir = th.dataset.k === "updated_at" ? -1 : 1; } renderComView(); });
+});
+$("cvSearch").addEventListener("input", debounce(renderComView, 150));
+["cvStatus", "cvType", "cvMine"].forEach(function(id){ $(id).addEventListener("change", renderComView); });
+$("cvNew").addEventListener("click", function(){ newCommunication(); });
+
 function cloudPath(x0, y0, x1, y1){
   var xa = Math.min(x0, x1), xb = Math.max(x0, x1), ya = Math.min(y0, y1), yb = Math.max(y0, y1);
   var r = Math.max(5, Math.min(16, Math.min(xb - xa, yb - ya) / 4));
@@ -4547,7 +4709,7 @@ $("incDelete").addEventListener("click", function(){
   if (S.online) api("deleteIssue", {project:S.project, id:id}).then(finish).catch(function(err){ toast(errText(err)); });
   else finish();
 });
-$("incGo").addEventListener("click", function(){ if (draft) goToIssue(draft, true); });
+$("incGo").addEventListener("click", function(){ if (draft){ if (S.mode === "com") setMode("split"); goToIssue(draft, true); } });
 function openIssue(id){ var it = Issues.filter(function(i){ return i.id === id; })[0]; if (!it) return; goToIssue(it, false); openDialog(it); }
 function goToIssue(it, closeDlg){
   if (closeDlg && $("incDlg").open) $("incDlg").close();
@@ -4594,6 +4756,7 @@ function renderIssueList(){
   });
   ul.innerHTML = ""; ul.appendChild(frag);
   drawOverlay();
+  renderComView();
 }
 $("incList").addEventListener("click", function(e){ var li = e.target.closest("li[data-id]"); if (li) openIssue(li.dataset.id); });
 $("incList").addEventListener("keydown", function(e){ if (e.key === "Enter"){ var li = e.target.closest("li[data-id]"); if (li) openIssue(li.dataset.id); } });
