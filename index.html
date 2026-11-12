@@ -277,6 +277,8 @@ dialog h3{margin:0 0 12px;font-size:16px;font-weight:600}
 /* ================================================================ móvil y tablet */
 .net-banner{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;padding:6px 12px;background:#FFF4D6;color:#5A4200;border-bottom:1px solid #E8C770;font-size:12.5px}
 .net-banner[hidden]{display:none}
+#sheetTitle.loading::after{content:" · cargando…";color:var(--muted);font-weight:400}
+#perfCopy{margin-top:8px;font-size:12px;width:100%}
 .tabbar,.fab{display:none}
 .mode-info aside{display:flex}
 html.compact body{overscroll-behavior:none}
@@ -509,7 +511,7 @@ html.compact .com-table td.late{color:var(--err)}
       <section><h2>Punto</h2><div id="pointBox"><p class="hint">Sin punto marcado.</p></div></section>
       <section><h2>Elemento</h2><div id="elemBox"><p class="hint">Haz clic en el modelo para seleccionar un elemento.</p></div></section>
       <section><h2>Control de exportación</h2><div id="checkBox"><p class="hint">Se calcula al cargar el IFC con su _MODELO.json.</p></div></section>
-      <section><h2>Paquete</h2><table class="kv" id="pkgBox"></table></section>
+      <section><h2>Paquete</h2><table class="kv" id="pkgBox"></table><button type="button" id="perfCopy" title="Copia los tiempos de este dispositivo para enviarlos">Copiar diagnóstico de velocidad</button></section>
       <p class="hint">Los archivos se leen en este equipo y no se envían a ningún sitio.</p>
     </aside>
   </div>
@@ -1874,12 +1876,26 @@ function startOffline(why){
 window.addEventListener("online", function(){ if (Offline.on){ $("netTxt").textContent = "Ha vuelto la conexión."; $("netRetry").hidden = false; } });
 $("netRetry").addEventListener("click", function(){ location.reload(); });
 
+function tokenEmail(){
+  if (!Auth.token) return "";
+  if (CONFIG.DEV) return String(Auth.token).replace(/^dev:/, "");
+  return String(decodeJwt(Auth.token).email || "").toLowerCase();
+}
 function startSession(){
-  api("me").then(function(me){
-    snapPut("me", {me:me, at:new Date().toISOString()});
-    applySession(me);
+  var email = tokenEmail(), shown = false;
+  var check = api("me").then(function(me){ snapPut("me", {me:me, at:new Date().toISOString()}); return me; });
+  // si en este dispositivo ya está guardada la sesión de esta misma cuenta, se entra al instante
+  snapGet("me").then(function(snap){
+    if (snap && snap.me && email && snap.me.email === email && !Auth.user){ shown = true; applySession(snap.me); }
+  }).then(function(){ return check; }).then(function(me){
+    if (!shown){ applySession(me); return; }
+    // ya dentro: solo se rehace la lista de proyectos si ha cambiado (un permiso nuevo o retirado)
+    var a = JSON.stringify(Auth.user.projects), b = JSON.stringify(me.projects);
+    Auth.user = me;
+    if (a !== b){ if (!me.projects.some(function(p){ return p.code === S.project; })){ resetWorkspace(); S.project = null; } applySession(me); }
   }).catch(function(e){
-    if (e && (e.code === "red" || e.code === "tiempo")) return startOffline(e.code);
+    if (e && (e.code === "red" || e.code === "tiempo")){ if (shown){ Offline.on = true; snapGet("me").then(function(s){ Offline.at = (s && s.at) || ""; showNetBanner(); }); return; } return startOffline(e.code); }
+    if (shown){ location.reload(); return; }
     Auth.token = null; showLogin(errText(e));
   });
 }
@@ -2001,9 +2017,10 @@ function applyRole(){
   $("roleBadge").hidden = !r; $("roleBadge").textContent = {equipo:"Equipo CEL-RAS", agente:"Agente", consulta:"Consulta"}[r] || "";
 }
 function resetWorkspace(){
+  S.loadGen = (S.loadGen || 0) + 1;
   Lib.locs = new Map(); Lib.pdfs = new Map(); Lib.pdfsByName = new Map(); Lib.cache.forEach(function(p){ p.then(function(d){ d.destroy(); }).catch(function(){}); }); Lib.cache = new Map();
   Lib.entries = []; Lib.byNum = new Map(); S.cur = null; S.loc = null; S.page = null; S.manifest = null; S.ifcName = "";
-  Issues = []; Sync.since = ""; S.openStats = null; S.pubPending = []; S.manifests = []; S.manifest = null;
+  Issues = []; Sync.since = ""; S.openStats = null; S.pubPending = []; S.manifests = []; S.manifest = null; S.pendingModel = null;
   Frames.names = new Map(); Frames.warned = {}; PropsCache.clear(); Lib.keyMap = new Map(); resetRevitProps(null); $("wrap").hidden = true; $("pdfEmpty").hidden = false; drawOverlay();
   if (Model){ disposeModel(); requestRender(); }
   $("ifcEmpty").hidden = false; $("progress").textContent = ""; $("checkBox").innerHTML = '<p class="hint">Se calcula al cargar el IFC con su _MODELO.json.</p>';
@@ -2047,21 +2064,58 @@ function fetchJsons(code, files, onEach){
     return Promise.all(pool).then(function(){ return {cached:res.length - missing.length, fetched:missing.length}; });
   });
 }
+// ---- medidas de tiempo, para diagnosticar la velocidad en cada dispositivo
+var Perf = {open:null, sheet:null, model:null};
+function openSig(d){ return (d.files || []).map(function(f){ return f.id + ":" + f.modified; }).sort().join("|") + "#" + (d.removed || []).length; }
+// lo que cambia a menudo (comunicaciones, organización, permisos) se aplica sin volver a cargar el proyecto
+function applyLive(x){
+  S.snapOpen = x; S.role = x.role; applyRole();
+  Issues = x.issues.filter(function(i){ return !i.deleted; });
+  Sync.since = x.issues.reduce(function(m, i){ return i.updated_at > m ? i.updated_at : m; }, "");
+  orgSet(x.layout || null); S.members = x.members || []; S.jp = !!x.jp; S.removed = x.removed || [];
+  fillGroupBy(); renderSheetList(); renderIssueList(); updateDeleteBtn();
+}
 function openProject(code){
   resetWorkspace(); S.project = code;
   var t0 = performance.now();
   try { localStorage.setItem("cr_visorobra_proyecto", code); } catch(e){}
   $("sheetList").innerHTML = '<p class="empty-list">Abriendo el proyecto…</p>';
-  var opened = Offline.on
-    ? snapGet("open|" + code).then(function(x){ if (!x) throw new ApiError("sin_datos_offline"); return x; })
-    : api("open", {project:code}).then(function(x){ snapPut("open|" + code, x); return x; });
-  return opened.then(function(d){
-    if (S.project !== code) return;
+  var fail = function(e){ toast(errText(e)); $("sheetList").innerHTML = '<p class="empty-list">' + errText(e) + "</p>"; };
+  if (Offline.on) return snapGet("open|" + code).then(function(x){ if (!x) throw new ApiError("sin_datos_offline"); Perf.open = {how:"sin conexión"}; return loadProject(code, x); }).catch(fail);
+  // con conexión: se muestra al instante lo guardado y, mientras, se pregunta al servidor si hay novedades
+  var fresh = api("open", {project:code}).then(function(x){ snapPut("open|" + code, x); return x; });
+  return snapGet("open|" + code).then(function(snap){
+    if (!snap) return fresh.then(function(x){ Perf.open = {how:"servidor (primera vez)", server:(performance.now() - t0) / 1000}; return loadProject(code, x); });
+    Perf.open = {how:"guardado en el dispositivo"};
+    var shown = loadProject(code, snap);
+    fresh.then(function(x){
+      if (S.project !== code) return;
+      Perf.open.server = (performance.now() - t0) / 1000;
+      if (openSig(x) !== openSig(snap)){
+        Perf.open.how = "guardado + novedades del servidor";
+        toast("Hay novedades en el proyecto: actualizando…");
+        var keep = S.cur ? {number:S.cur.number, src:S.cur.src} : null;
+        resetWorkspace(); S.project = code;
+        return loadProject(code, x).then(function(){ var e = keep && Lib.currentOf(keep.number, keep.src); if (e && (!S.cur || S.cur.number !== keep.number)) openSheet(e); });
+      }
+      applyLive(x); renderPkg();
+    }).catch(function(e){
+      if (e && (e.code === "red" || e.code === "tiempo")){ Offline.on = true; snapGet("me").then(function(s){ Offline.at = (s && s.at) || ""; showNetBanner(); }); }
+      else toast(errText(e));
+    });
+    return shown;
+  }).catch(fail);
+}
+function loadProject(code, d){
+  var t0 = performance.now(), gen = S.loadGen;
+  var stale = function(){ return S.project !== code || S.loadGen !== gen; };
+  return Promise.resolve(d).then(function(d){
+    if (stale()) return;
     S.snapOpen = d;
     // primero, el estado de cada publicación: solo se usan las completas (o las antiguas, sin marcas)
     var markFiles = d.files.filter(function(f){ return /_visorobra_(publicacion|en_curso)\.json$/i.test(f.name); }), marks = [];
     return fetchJsons(code, markFiles, function(f, text){ try { marks.push({path:f.path || "", name:f.name, m:JSON.parse(text)}); } catch(e){} }).then(function(){
-    if (S.project !== code) return;
+    if (stale()) return;
     var pub = publicationState(d.files, marks);
     d.files = pub.files; S.pubPending = pub.pending;
     if (pub.pending.length) toast(pub.pending.length === 1 ? "Hay 1 publicación aún subiéndose o incompleta: se mostrará cuando esté completa." : "Hay " + pub.pending.length + " publicaciones aún subiéndose o incompletas.");
@@ -2082,7 +2136,7 @@ function openProject(code){
     });
     var covered = new Set(), loading = true;
     var refresh = debounce(function(){
-      if (S.project !== code) return;
+      if (stale()) return;
       Lib.rebuild(!loading); sharedInv = null;
       if (S.cur){ var again = Lib.byKey(S.cur.key); if (again){ S.cur = again; if (!S.loc && again.loc){ S.loc = again.loc; drawOverlay(); } } }
       renderSheetList(); renderPkg();
@@ -2107,7 +2161,7 @@ function openProject(code){
     }
     var ifcStarted = false;
     function startIfc(){
-      if (ifcStarted || S.project !== code) return; ifcStarted = true;
+      if (ifcStarted || stale()) return; ifcStarted = true;
       computeFrames();
       var known = Frames.known, bySrc = new Map();
       (S.manifests || []).forEach(function(x){
@@ -2148,10 +2202,14 @@ function openProject(code){
       }
       else $("ifcEmptyTxt").textContent = "Este proyecto aún no tiene modelo publicado. Expórtalo desde Revit con «Exportar lámina obra» a la carpeta del visor.";
     }
-    if (!modelos.length) startIfc();
+    function startModel(){
+      if (Compact.on && S.mode !== "model"){ S.pendingModel = startIfc; $("ifcEmptyTxt").textContent = "El modelo se cargará al abrir esta pestaña."; }
+      else startIfc();
+    }
+    if (!modelos.length) startModel();
     // fase 1: manifiestos e índices de publicación (pocos archivos); el modelo arranca en cuanto se conoce
     return fetchJsons(code, modelos.concat(indices), onJson).then(function(r1){
-      startIfc();
+      startModel();
       // fase 2: JSON por lámina que no estén ya en un índice (publicaciones antiguas)
       var need = locs.filter(function(f){ return !covered.has(f.path + "|" + f.name.replace(/_loc\.json$/i, ".pdf").toLowerCase()); });
       return fetchJsons(code, need, onJson).then(function(r2){
@@ -2161,7 +2219,7 @@ function openProject(code){
       });
     });
     });
-  }).catch(function(e){ toast(errText(e)); $("sheetList").innerHTML = '<p class="empty-list">' + errText(e) + "</p>"; });
+  });
 }
 function syncIssues(full){
   if (!S.online || !S.project) return Promise.resolve();
@@ -2566,17 +2624,58 @@ function openSheet(e){
   document.querySelectorAll("#sheetList li[aria-current]").forEach(function(li){ li.removeAttribute("aria-current"); });
   var li = document.querySelector('#sheetList li[data-key="' + CSS.escape(e.key) + '"]');
   if (li){ li.setAttribute("aria-current", "true"); li.scrollIntoView({block:"nearest"}); }
+  var tOpen = performance.now(), perf = {number:e.number, preview:false, t0:tOpen};
+  S.page = null; Perf.sheet = perf;
+  (function(){ var c0 = $("cv"), g = c0.getContext("2d", {alpha:false}); g.fillStyle = "#fff"; g.fillRect(0, 0, c0.width, c0.height); $("ov").innerHTML = ""; })();
+  showPreview(e, seq, perf);
   return Lib.doc(e).then(function(d){ return d.getPage(1); }).then(function(p){
     if (seq !== openSeq) return;
+    perf.ready = (performance.now() - tOpen) / 1000;
     S.page = p; S.zoom = 0; M2.pts = []; renderPdf(); renderIssueList(); renderPkg(); prefetchAround(e); if (!$("m2Panel").hidden) renderM2List();
+    var rt = renderTask, tDraw = performance.now();
+    if (rt) rt.promise.then(function(){
+      if (seq !== openSeq) return;
+      perf.draw = (performance.now() - tDraw) / 1000; perf.total = (performance.now() - tOpen) / 1000;
+      $("sheetTitle").classList.remove("loading"); renderPkg(); savePreview(e);
+    }).catch(function(){});
     if (!e.loc) toast("La lámina " + e.number + " no tiene _LOC.json: se ve, pero no se enlaza con el modelo.");
   }).catch(function(err){ toast("No se ha podido abrir el PDF de " + e.number + ": " + err.message); });
 }
 
+// ---- vista previa: una imagen ligera de cada lámina ya dibujada, para mostrarla al instante la próxima vez
+function prevKey(e){ return "prev|" + S.project + "|" + e.key + "|" + ((e.file && e.file.modified) || ""); }
+var prevSaved = new Set();
+function savePreview(e){
+  var k = prevKey(e);
+  if (prevSaved.has(k) || !S.page || Math.abs(S.zoom - S.fit) > 0.001) return;
+  prevSaved.add(k);
+  var cv = $("cv"), w = Math.min(1100, cv.width), c = document.createElement("canvas");
+  c.width = w; c.height = Math.round(cv.height * w / cv.width);
+  c.getContext("2d").drawImage(cv, 0, 0, c.width, c.height);
+  c.toBlob(function(b){ if (b) FileCache.put(k, b, b.size); }, "image/jpeg", 0.72);
+}
+function showPreview(e, seq, perf){
+  $("sheetTitle").classList.add("loading");
+  FileCache.get(prevKey(e)).then(function(b){
+    if (!b || seq !== openSeq || S.page) return;
+    return createImageBitmap(b).then(function(bmp){
+      if (seq !== openSeq || S.page){ bmp.close && bmp.close(); return; }
+      var cv = $("cv"), w = Math.max(200, $("pdfScroll").clientWidth - 32), h = Math.round(w * bmp.height / bmp.width), ov = $("ov");
+      cv.width = bmp.width; cv.height = bmp.height; cv.style.width = w + "px"; cv.style.height = h + "px";
+      cv.getContext("2d", {alpha:false}).drawImage(bmp, 0, 0); bmp.close && bmp.close();
+      ov.setAttribute("width", w); ov.setAttribute("height", h); ov.setAttribute("viewBox", "0 0 " + w + " " + h); ov.innerHTML = "";
+      $("pdfEmpty").hidden = true; $("wrap").hidden = false;
+      perf.preview = true; perf.previewAt = (performance.now() - perf.t0) / 1000;
+    });
+  }).catch(function(){});
+}
+var COARSE = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
 function prefetchAround(e){
   if (!S.online) return;
+  var conn = navigator.connection || {};
+  if (conn.saveData || /(^|-)2g$/.test(conn.effectiveType || "")) return;   // con ahorro de datos o conexión muy lenta, no se adelanta nada
   var i = flatList.indexOf(Lib.currentOf(e.number, e.src)), idle = window.requestIdleCallback || function(fn){ return setTimeout(fn, 400); };
-  [i + 1, i - 1, i + 2].forEach(function(k){
+  (COARSE ? [i + 1] : [i + 1, i - 1, i + 2]).forEach(function(k){
     var n = flatList[k];
     if (n && n.file && n.file.size && n.file.size < 30e6) idle(function(){ n.file.arrayBuffer().catch(function(){}); });
   });
@@ -2594,6 +2693,7 @@ function setMode(mode){
   try { localStorage.setItem("cr_visorobra_vista", mode); } catch(e){}
   S.mode = mode;
   if (mode === "com") renderComView();
+  if (mode === "model" && S.pendingModel){ var pm = S.pendingModel; S.pendingModel = null; pm(); }
   if (typeof updateFab === "function") updateFab();
   setTimeout(function(){ resize(); if (S.page) refit(); requestRender(); }, 0);
 }
@@ -2605,7 +2705,7 @@ function needModel(){ if (S.mode === "sheet" || S.mode === "com") setMode("split
 if (CONFIG.DEV) window.__crvisor = {
   get Model(){ return Model; }, get S(){ return S; }, get RevitProps(){ return RevitProps; },
   entryOf:entryOf, elementBox:elementBox, toScreen:function(v){ return toScreen(v); }, THREE:THREE,
-  get renderer(){ return renderer; }, get camera(){ return camera; },
+  get renderer(){ return renderer; }, get camera(){ return camera; }, get Perf(){ return Perf; },
   ifcReady:function(){ return ifcWorker(); }, loadPdfLib:function(){ return loadPdfLib(); }, get Offline(){ return Offline; }
 };
 
@@ -2956,19 +3056,30 @@ function renderPdf(){
   var vp1 = S.page.getViewport({scale:1});
   if (!S.zoom){ S.fit = Math.max(0.1, Math.min(6, ($("pdfScroll").clientWidth - 32) / vp1.width)); S.zoom = S.fit; }
   var vp = S.page.getViewport({scale:S.zoom});
-  var dpr = window.devicePixelRatio || 1;
-  if (vp.width * vp.height * dpr * dpr > MAX_PX) dpr = Math.sqrt(MAX_PX / (vp.width * vp.height));
+  // en móvil y tablet se dibuja con menos píxeles: nítido en esas pantallas y varias veces más rápido
+  var dpr = window.devicePixelRatio || 1, maxPx = COARSE || Compact.on ? 8e6 : MAX_PX;
+  if (COARSE) dpr = Math.min(dpr, 2);
+  if (vp.width * vp.height * dpr * dpr > maxPx) dpr = Math.sqrt(maxPx / (vp.width * vp.height));
+  // nunca en blanco: lo que ya se ve se estira al tamaño nuevo (algo borroso) mientras la lámina nítida
+  // se dibuja aparte; al terminar, se sustituye de golpe
   var cv = $("cv");
-  cv.width = Math.floor(vp.width*dpr); cv.height = Math.floor(vp.height*dpr);
   cv.style.width = vp.width + "px"; cv.style.height = vp.height + "px";
+  var buf = document.createElement("canvas");
+  buf.width = Math.floor(vp.width*dpr); buf.height = Math.floor(vp.height*dpr);
   var ov = $("ov");
   ov.setAttribute("width", vp.width); ov.setAttribute("height", vp.height);
   ov.setAttribute("viewBox", "0 0 " + vp.width + " " + vp.height);
   $("pdfEmpty").hidden = true; $("wrap").hidden = false;
   $("zLbl").textContent = Math.round(S.zoom / S.fit * 100) + " %";
   if (renderTask) renderTask.cancel();
-  renderTask = S.page.render({canvasContext:cv.getContext("2d", {alpha:false}), viewport:vp, transform: dpr !== 1 ? [dpr,0,0,dpr,0,0] : null});
-  renderTask.promise.catch(function(){});
+  var task = S.page.render({canvasContext:buf.getContext("2d", {alpha:false}), viewport:vp, transform: dpr !== 1 ? [dpr,0,0,dpr,0,0] : null});
+  renderTask = task;
+  task.promise.then(function(){
+    if (renderTask !== task) return;
+    cv.width = buf.width; cv.height = buf.height;
+    cv.getContext("2d", {alpha:false}).drawImage(buf, 0, 0);
+    buf.width = buf.height = 0;   // libera la memoria del lienzo auxiliar
+  }).catch(function(){});
   drawOverlay();
 }
 function zoomTo(z, a){
@@ -3531,6 +3642,7 @@ function loadOne(file, geoFile, label, idx){
 }
 // list: [{key, name, file, geo, instances}] → lee cada modelo una vez y monta la federación
 function loadModelSet(list){
+  var gen = S.loadGen;
   t0Load = performance.now(); ModelReady = null; OpenProps = -1;
   $("ifcEmpty").hidden = true; $("bar").hidden = false; $("barFill").style.width = "4%";
   $("progress").textContent = "Preparando el modelo…";
@@ -3547,6 +3659,7 @@ function loadModelSet(list){
       var k = {cache:0, geo:0, ifc:0}; out.forEach(function(x){ k[x.kind]++; });
       S.modelTiming = "en " + total + " (" + [k.cache ? k.cache + " de la caché" : "", k.geo ? k.geo + " versiones procesadas" : "", k.ifc ? k.ifc + " IFC procesados" : ""].filter(Boolean).join(", ") + ")";
     }
+    if (gen !== S.loadGen) return;   // el proyecto se ha vuelto a cargar mientras tanto
     finishModels(out, S.modelTiming);
   }).catch(function(err){
     $("bar").hidden = true; $("progress").textContent = "";
@@ -4147,6 +4260,29 @@ function runExportCheck(){
   if (list.children.length) holder.appendChild(list);
   if (!res.length){ var ok = document.createElement("p"); ok.className = "hint"; ok.textContent = "Todos los elementos comprobados están a menos de " + TOL_MM + " mm de su posición en Revit."; holder.appendChild(ok); }
 }
+$("perfCopy").addEventListener("click", function(){
+  var txt = perfReport();
+  (navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(txt) : Promise.reject()).then(function(){ toast("Diagnóstico copiado: pégalo en un mensaje."); },
+    function(){ prompt("Copia este texto:", txt); });
+});
+function secs1(x){ return x === undefined || x === null ? "—" : x.toLocaleString("es-ES", {maximumFractionDigits:1}) + " s"; }
+function perfRows(){
+  var r = [];
+  if (Perf.open) r.push(["Proyecto desde", Perf.open.how + (Perf.open.server !== undefined ? " · servidor " + secs1(Perf.open.server) : "")]);
+  if (Perf.sheet && Perf.sheet.total !== undefined) r.push(["Última lámina", Perf.sheet.number + ": preparar " + secs1(Perf.sheet.ready) + " · dibujar " + secs1(Perf.sheet.draw) + (Perf.sheet.preview ? " · vista previa a los " + secs1(Perf.sheet.previewAt) : "")]);
+  if (S.modelTiming) r.push(["Modelo", S.modelTiming]);
+  return r;
+}
+function perfReport(){
+  var conn = navigator.connection || {}, rows = perfRows().concat(S.openStats ? [["Apertura", secs1(S.openStats.secs) + " · " + S.openStats.fetched + " descargados, " + S.openStats.cached + " de la caché"]] : []);
+  return ["Visor de obra · diagnóstico de velocidad · " + new Date().toLocaleString("es-ES"),
+          "Proyecto: " + (S.project || "—") + " · láminas: " + Lib.entries.length + " · modelos: " + (Model ? Model.models.length + " (" + Model.n + " elementos)" : "sin cargar"),
+          "Dispositivo: " + navigator.userAgent,
+          "Pantalla: " + innerWidth + "×" + innerHeight + " · densidad " + (window.devicePixelRatio || 1) + " · táctil: " + (COARSE ? "sí" : "no") + " · compacto: " + (Compact.on ? "sí" : "no"),
+          "Conexión: " + (conn.effectiveType || "desconocida") + (conn.downlink ? " · " + conn.downlink + " Mb/s" : "") + (conn.saveData ? " · ahorro de datos" : "") + " · en línea: " + (navigator.onLine ? "sí" : "no"),
+          "Memoria del dispositivo: " + (navigator.deviceMemory ? navigator.deviceMemory + " GB" : "desconocida")]
+    .concat(rows.map(function(x){ return x[0] + ": " + x[1]; })).join("\n");
+}
 function renderPkg(){
   var t = $("pkgBox"); t.innerHTML = "";
   var cur = Lib.entries.filter(function(e){ return e.current; });
@@ -4156,6 +4292,7 @@ function renderPkg(){
    ["Sin localización", String(cur.filter(function(e){ return !e.loc; }).length)],
    ["Modelo", S.ifcName || "pendiente"], ["Manifiesto", S.manifest ? (S.manifest.ifc_file || "sí") : "pendiente"]]
   .concat(S.openStats ? [["Apertura", S.openStats.secs.toLocaleString("es-ES", {maximumFractionDigits:1}) + " s · " + S.openStats.fetched + " descargados, " + S.openStats.cached + " de la caché"]] : [])
+  .concat(perfRows())
   .forEach(function(r){ var tr = t.insertRow(); tr.insertCell().textContent = r[0]; tr.insertCell().textContent = r[1]; });
 }
 

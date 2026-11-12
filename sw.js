@@ -1,7 +1,7 @@
 /* CEL-RAS · Visor de obra · trabajador de servicio
    Guarda la aplicación en el dispositivo para que se abra sin conexión. Las peticiones al servidor
    (Apps Script) y a Google no pasan por aquí: los datos de los proyectos los guarda el propio visor. */
-var CACHE = "visor-obra-0.20-42308";
+var CACHE = "visor-obra-0.21-74699";
 var SHELL = ["./", "index.html", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 self.addEventListener("install", function(e){
   e.waitUntil(caches.open(CACHE).then(function(c){ return c.addAll(SHELL); }).then(function(){ return self.skipWaiting(); }));
