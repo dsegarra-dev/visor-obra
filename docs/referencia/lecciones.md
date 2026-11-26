@@ -19,7 +19,7 @@
 
 ## Del taller BBTS26 que aplican aquí
 
-11. **Probar cada paso con los dos proyectos desde el principio** (CASO-P y CASO-F), no solo con el pequeño. Es lo que más tiempo ahorró en los ensayos.
+11. **Probar cada paso con el caso de prueba desde el principio** (CASO-F, el grande), no dejarlo para el final. Es lo que más tiempo ahorró en los ensayos. CASO-P se descartó el 26/11/2026: su carpeta solo contenía el PROY-X-PE.
 12. **Medir pronto con el caso grande** (la federación de CASO-F) para elegir la estrategia de carga.
 13. **Cuando un criterio no se cumple, el fallo se deja visible.** No se mueve la tolerancia hasta que pase.
 14. **Los valores esperados salen de una fuente independiente**, nunca del código que se prueba, y se calculan con todos los decimales.
@@ -34,3 +34,4 @@
 ## Del arranque de la v2
 
 22. **La v0.23 y el servidor v0.17 se perdieron porque se entregaron como zip y nunca se subieron.** Todo lo que funcione se sube a git y a Apps Script el mismo día.
+23. **Borrar una lámina nunca invalida el resto de su publicación.** En la v1, eliminar la lámina 00 de CASO-F mandó su PDF a la papelera, la marca de publicación dejó de cuadrar y se dejaron de ver las otras 5 láminas de esa publicación (comprobado en pantalla el 26/11/2026). Es el CA-21 de la v2.

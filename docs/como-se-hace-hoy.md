@@ -215,6 +215,7 @@ No se han leído `lib/` (lector IFC, pdf-lib) ni `manifest.webmanifest`.
 3. El PDF y su `_LOC.json` van a la papelera de Drive (recuperables 30 días). Los índices no se tocan.
 4. Queda anotado en «Láminas eliminadas»: fecha, quién, lámina, modelo, publicación, revisión, alcance, motivo y archivos.
 5. Las comunicaciones que citan la lámina se conservan.
+6. **Efecto comprobado (26/11/2026):** al mandar el PDF a la papelera, la marca de publicación deja de cuadrar y la v1 trata toda la publicación como incompleta (apartado 3.4). En CASO-F, eliminar la lámina 00 dejó sin ver también CO01-02 a CO01-06. Requisito de la v2: borrar una lámina nunca invalida el resto de su publicación (CA-21).
 
 ## 11. Impresión
 

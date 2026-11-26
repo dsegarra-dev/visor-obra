@@ -21,6 +21,7 @@ Reglas del proyecto. Claude Code las lee al empezar cada sesión a través de `C
 - El contrato de publicación de Revit: la v2 lee el mismo paquete que genera «Exportar lámina obra» (PDF + JSON de localización, índice, IFC federado, `_PROPS.json.gz`, `.crimg`, marca de publicación completa). Si algo del paquete no basta, se propone un cambio en Revit; no se adapta el visor a escondidas.
 - La carpeta central de COMUNICACIONES y la hoja `CR_VisorObra_Proyectos` de producción. En desarrollo se usa el entorno de pruebas.
 - Las credenciales: ni el OAuth Client ID de producción, ni claves de API, ni correos reales en el código o en git. Las claves van en las propiedades del script de Apps Script.
+- El repositorio es público: ningún dato de obra, persona o cliente se sube a git.
 
 ## Datos y permisos
 
@@ -32,7 +33,7 @@ Reglas del proyecto. Claude Code las lee al empezar cada sesión a través de `C
 
 ## Pruebas
 
-- Casos de prueba: CASO-P (pequeño) y CASO-F (federación de 22 vínculos). Cada paso se prueba con los dos, en su copia de pruebas.
+- Caso de prueba: solo CASO-F (federación de 22 vínculos). Cada paso se prueba con él, en su copia de pruebas. CASO-P se descartó el 26/11/2026: su carpeta del visor solo contiene el PROY-X-PE (ver `casos/README.md`).
 - Pantallas: ordenador, tablet y móvil. En móvil no se cargan planos ni modelo 3D.
 - Todo botón de la interfaz se prueba haciendo clic en un navegador real con Playwright, en tamaño escritorio y en tamaño móvil. Una función de la interfaz no está hecha hasta que esa prueba pasa.
 - Los tiempos se miden, no se estiman. Cada medida indica dispositivo, red y hora.

@@ -149,9 +149,9 @@ Formato Dado / Cuando / Entonces. Cada criterio debe poder fallar y dice cómo s
 
 ### Núcleo
 
-- **CA-04.** Dado el paquete publicado de CASO-P, cuando se abre en la v2, entonces el número de láminas, de versiones y de modelos coincide con el índice publicado. *Script independiente que cuenta el paquete en Drive.*
+- **CA-04.** Dado el paquete publicado de CASO-F, cuando se abre en la v2, entonces el número de láminas, de versiones y de modelos coincide con el índice publicado. *Script independiente que cuenta el paquete en Drive.*
 - **CA-05.** Dado un punto de un plano de CASO-F, cuando se pide su localización en el modelo, entonces la cámara va al mismo elemento que en la v1. *Tres puntos de control anotados en p3.*
-- **CA-06.** Dadas las comunicaciones de CASO-P creadas con la v1, cuando se abren en la v2, entonces se ven todas, con sus estados, respuestas y adjuntos. *Recuento contra el libro central.*
+- **CA-06.** Dadas las comunicaciones de CASO-F creadas con la v1, cuando se abren en la v2, entonces se ven todas, con sus estados, respuestas y adjuntos. *Recuento contra el libro central.*
 - **CA-07.** Dada una incidencia nueva sobre un plano, cuando se guarda, entonces aparece en el libro central y en su ficha PDF con el recorte del plano. *Lectura del libro central tras la prueba.*
 
 ### Móvil, tablet y sin cobertura
@@ -178,6 +178,7 @@ Formato Dado / Cuando / Entonces. Cada criterio debe poder fallar y dice cómo s
 
 - **CA-19.** Dada una publicación incompleta (sin marca), cuando se abre el proyecto, entonces el visor sigue mostrando la última publicación completa y avisa. *Paquete de prueba sin marca.*
 - **CA-20.** Dado cualquier error del servidor, cuando ocurre, entonces el usuario ve un mensaje entendible y el error queda registrado con hora y usuario. *Error forzado en el servidor de pruebas.*
+- **CA-21.** Dada una publicación completa de CASO-F con varias láminas, cuando el JP elimina una de ellas, entonces el resto de láminas de esa publicación se siguen viendo y solo desaparece la eliminada. Borrar una lámina nunca invalida el resto de su publicación. *Playwright en la copia de pruebas: recuento de láminas antes y después.* (En la v1 sí la invalida: ver `casos/caso-f.md`.)
 
 ## 6. Riesgos conocidos
 
@@ -208,4 +209,4 @@ Formato Dado / Cuando / Entonces. Cada criterio debe poder fallar y dice cómo s
 3. ¿Plantilla del acta de obra y carpeta donde se guarda?
 4. ¿Plazos de respuesta por tipo de comunicación?
 5. ¿Se publica la app de Google antes del piloto?
-6. ¿Pruebas en la copia de CASO-P y CASO-F o en proyectos de prueba creados desde cero?
+6. ¿Pruebas en la copia de CASO-F o en un proyecto de prueba creado desde cero?
