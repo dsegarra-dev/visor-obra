@@ -11,7 +11,7 @@ Tiempos de la v1 publicada (`sw.js` 0.21, servidor v0.16) con CASO-F, medidos co
 | Fecha y horas | 26/11/2026, de 16:51 a 19:10 (hora de Madrid) |
 | Dispositivo | Ordenador del BIM Manager (Windows 11 Pro), Edge 158, ventana de 1440 × 900 |
 | Cuenta y rol | el BIM Manager, rol «Equipo CEL-RAS» |
-| Red | No consta qué red era (cable o wifi del despacho): **PENDIENTE, lo confirma el BIM Manager**. Edge la estima como «4g», 1,4 Mb/s y 100 ms; es una estimación del navegador, no una medida |
+| Red | Cable del despacho (lo confirma el BIM Manager el 27/11/2026). Edge la estimaba como «4g», 1,4 Mb/s y 100 ms; es una estimación del navegador, no una medida |
 | Lámina | IE02-30 (PDF de 4/11/2026) |
 | Comunicación | COM-0001 (envío, sin capturas ni adjuntos) |
 | Modelo | 38 modelos (17 + 21 vínculos), 257 copias, 210.471 elementos |

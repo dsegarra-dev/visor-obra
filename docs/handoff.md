@@ -4,6 +4,30 @@
 
 Estado al cerrar cada parada. Lo último va arriba.
 
+## Parada 5 · Entrevista sobre la spec (`v2-p5`, 27/11/2026)
+
+**Hecho**
+- `docs/entrevista.md`: 24 acuerdos que cierran los PENDIENTE de la spec, las P-05 a P-14 y lo abierto en la REA. Al final, la lista de cambios que hay que hacer en la spec y en `AGENTS.md`.
+- `casos/medidas-ordenador.md`: la red de las medidas era el cable del despacho.
+- Memoria del asistente: proponer las plantillas de incidencia cuando la v2 esté validada.
+
+**Decisiones que cambian el plan**
+- **Permisos:** los tres niveles de Drive de la v1. Los seis roles solo sirven para notificar; los asigna el JP en una pantalla «Personas».
+- **Transcripción:** el dictado del teclado, sin audio (cambia el CA-16 y `AGENTS.md`).
+- **Planos en el móvil:** se reabren con un prototipo de `.crimg`. Se quedan si abrir IE02-30 tarda menos de 3 s con 4G en móviles reales.
+- **Eliminar lámina:** el PDF va a `_eliminadas` y el visor descuenta la eliminación en la marca.
+- **Piloto:** solo con cuentas del despacho; las pruebas, solo en la copia de CASO-F.
+
+**Abierto**
+- Antes del piloto: comprobar dónde procesan la voz los dictados de Apple y Google (choca con la regla de datos de `AGENTS.md`).
+- Confirmar en la parada 7:
+  - si las incidencias de prioridad Alta también avisan al momento;
+  - cómo se crean incidencias desde el móvil mientras no haya planos.
+- Cambio de Revit, en una tarea aparte: reducir los PDF de más de 30 MB.
+- La subcarpeta `_eliminadas` la crea el servidor del visor, pero queda dentro del paquete publicado. Hay que comprobar que «Exportar lámina obra» no la toca al volver a publicar.
+
+**Siguiente: parada 7 (cerrar la spec)**
+
 ## Parada 4 · REA (`v2-p4`, 27/11/2026)
 
 **Hecho**
