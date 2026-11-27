@@ -18,7 +18,9 @@ Reglas del proyecto. Claude Code las lee al empezar cada sesión a través de `C
 ## Lo que nunca se toca
 
 - La rama `main` y lo publicado en GitHub Pages. La v2 se desarrolla en la rama `v2` hasta que supere el piloto.
-- El contrato de publicación de Revit: la v2 lee el mismo paquete que genera «Exportar lámina obra» (PDF + JSON de localización, índice, IFC federado, `_PROPS.json.gz`, `.crimg`, marca de publicación completa). Si algo del paquete no basta, se propone un cambio en Revit; no se adapta el visor a escondidas.
+- El contrato de publicación de Revit: la v2 lee el mismo paquete que genera «Exportar lámina obra» v0.19 (PDF + JSON de localización, índice, IFC federado, `_PROPS.json.gz`, marca de publicación completa). Si algo del paquete no basta, se propone un cambio en Revit; no se adapta el visor a escondidas.
+  - Revit no genera `.crgeo` ni `.crimg`. Los genera el visor en `_visor_procesado`.
+  - La subcarpeta `_eliminadas` de cada publicación la crea el servidor al eliminar una lámina (spec 4.2).
 - La carpeta central de COMUNICACIONES y la hoja `CR_VisorObra_Proyectos` de producción. En desarrollo se usa el entorno de pruebas.
 - Las credenciales: ni el OAuth Client ID de producción, ni claves de API, ni correos reales en el código o en git. Las claves van en las propiedades del script de Apps Script.
 - El repositorio es público: ningún dato de obra, persona o cliente se sube a git.
@@ -26,15 +28,24 @@ Reglas del proyecto. Claude Code las lee al empezar cada sesión a través de `C
 ## Datos y permisos
 
 - Nadie sin permiso ve nada de un proyecto. Cada función nueva se prueba también con un usuario sin permiso.
-- Solo el jefe de proyecto (JP, columna E de la hoja de proyectos) organiza y elimina planos.
+- Los permisos salen del nivel en Drive de la carpeta del visor:
+  - editor = equipo;
+  - comentarista = agente;
+  - lector = consulta.
+- Los roles (disciplinas) solo deciden a quién se avisa. Los asigna el JP en «Personas» (spec 2).
+- Solo el jefe de proyecto (JP, columna E de la hoja de proyectos) organiza y elimina planos, elimina comunicaciones y asigna roles.
 - Órdenes: las emiten la DF y los JP del despacho.
-- La IA solo propone. Ninguna incidencia, cambio, cierre ni acta se escribe sin que un técnico la valide. Se guarda audio, transcripción, propuesta y decisión.
+- La IA solo propone. Ninguna incidencia, cambio, cierre ni acta se escribe sin que un técnico (JP o DF) la valide. Se guardan el texto dictado, la propuesta, la decisión, quién y cuándo. No se guarda audio.
 - Los datos de obra solo se envían a la API de Claude y a Google desde el servidor, con la cuenta del despacho.
+  - Única excepción: el dictado del teclado del móvil, y solo si se hace en el propio dispositivo. Es condición antes del piloto (spec 6).
 
 ## Pruebas
 
-- Caso de prueba: solo CASO-F (federación de 22 vínculos). Cada paso se prueba con él, en su copia de pruebas. CASO-P se descartó el 26/11/2026: su carpeta del visor solo contiene el PROY-X-PE (ver `casos/README.md`).
-- Pantallas: ordenador, tablet y móvil. En móvil no se cargan planos ni modelo 3D.
+- Caso de prueba: solo CASO-F (federación de 2 modelos con 38 vínculos, 17 + 21, y 257 copias). Cada paso se prueba con él, en su copia de pruebas. CASO-P se descartó el 26/11/2026: su carpeta del visor solo contiene el PROY-X-PE (ver `casos/README.md`).
+- Mientras la app de Google esté en modo prueba, solo entran cuentas del despacho. Los permisos externos se prueban con cuentas internas de pruebas con el nivel de Drive que toque.
+- Pantallas: ordenador, tablet y móvil.
+  - En móvil no se carga nunca el modelo 3D.
+  - Los planos en el móvil solo entran si el prototipo de teselas cumple el CA-22; hasta entonces, tampoco se cargan.
 - Todo botón de la interfaz se prueba haciendo clic en un navegador real con Playwright, en tamaño escritorio y en tamaño móvil. Una función de la interfaz no está hecha hasta que esa prueba pasa.
 - Los tiempos se miden, no se estiman. Cada medida indica dispositivo, red y hora.
 - Antes de culpar al código, descarta lo de entorno: sincronización de Drive, archivo equivocado, sesión de Google o GitHub, abrir con `file://`.

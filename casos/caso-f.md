@@ -62,6 +62,6 @@ PENDIENTE: los da el BIM Manager (paso 4 de la parada 3).
 
 ## PENDIENTE
 
-- **C-02 · ¿22 o 21 vínculos?** `AGENTS.md` habla de «federación de 22 vínculos». El manifiesto de `ORIGEN-B` tiene 21 vínculos; en su carpeta hay 22 IFC, contando el del anfitrión, que el manifiesto no usa. Y el otro origen (`ORIGEN-A`) añade 17 vínculos más.
+- ~~C-02 · ¿22 o 21 vínculos?~~ Resuelto en la entrevista (27/11/2026): se describe como «2 modelos con 38 vínculos (17 + 21) y 257 copias». Contexto: `AGENTS.md` habla de «federación de 22 vínculos». El manifiesto de `ORIGEN-B` tiene 21 vínculos; en su carpeta hay 22 IFC, contando el del anfitrión, que el manifiesto no usa. Y el otro origen (`ORIGEN-A`) añade 17 vínculos más.
 - ~~C-03 · Lámina 00.~~ Resuelto: no se ve ninguna de las 6 láminas; el BIM Manager lo arregla desde Revit (26/11/2026).
-- **C-04 · PDF de 200–260 MB.** `CO01-01`, `PGN 01` y `PGN 02` pesan entre 197 y 260 MB. Es probable que sean el caso peor al abrir un plano.
+- ~~C-04 · PDF de 200–260 MB.~~ Resuelto en la entrevista (27/11/2026): por encima de 30 MB, Revit los reduce antes de publicar (cambio en una tarea aparte; spec 4.2). Contexto: `CO01-01`, `PGN 01` y `PGN 02` pesan entre 197 y 260 MB. Es probable que sean el caso peor al abrir un plano.

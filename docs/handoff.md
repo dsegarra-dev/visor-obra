@@ -4,6 +4,54 @@
 
 Estado al cerrar cada parada. Lo último va arriba.
 
+## Parada 7 · Cerrar la spec (`v2-p7`, 27/11/2026)
+
+**Hecho**
+- Spec `CR_ESP_VisorObra_PO_v2.0.md` cerrada con los 24 acuerdos de la entrevista y las dos decisiones finales:
+  - las incidencias de prioridad Alta avisan al momento;
+  - crear incidencias desde el móvil se decide con el resultado del prototipo de `.crimg`.
+- **Apartado 1.1 corregido:**
+  - lo publicado es `sw.js` 0.21 con el servidor v0.16;
+  - la v0.23 y el servidor v0.17 se perdieron;
+  - los `.crimg` los generaba el visor, no Revit.
+- Los «medir en p3» se han sustituido por las cifras de `casos/medidas-ordenador.md`, con cómo se midieron (5.1). Lo que no está medido (móvil, tablet, puntos de control) queda como dato por anotar, sin cifra.
+- **CA nuevos, del CA-22 al CA-30:**
+  - prototipo de planos en el móvil;
+  - avisos al momento y resumen diario;
+  - devolver;
+  - festivos;
+  - eliminar comunicaciones solo el JP;
+  - «Personas»;
+  - lámina pesada;
+  - acta editada en Docs.
+- **Riesgos:**
+  - el dictado tiene que hacerse en el propio dispositivo antes del piloto;
+  - Revit y `_eliminadas`;
+  - la DF externa con permiso de editor;
+  - el piloto sin usuarios externos;
+  - el cupo de correo.
+- **`AGENTS.md`:**
+  - permisos por nivel de Drive y roles solo para avisar;
+  - registro sin audio;
+  - excepción del dictado en el dispositivo;
+  - CASO-F con 2 modelos y 38 vínculos;
+  - planos en el móvil solo si se cumple el CA-22;
+  - el paquete de Revit sin `.crimg`.
+- `casos/caso-f.md`: C-02 y C-04 resueltos.
+
+**Comprobado en el script de Revit v0.19** (`.scratchpad/v1/revit/script.py`)
+- Cada publicación crea su propia carpeta y nunca escribe en las anteriores, así que no toca `_eliminadas`.
+- Riesgo: con la opción «nuevas o con revisión cambiada», una lámina cuyo PDF falta en su carpeta se vuelve a proponer para publicar. Hace falta un cambio en Revit, en una tarea aparte.
+- El script no genera `.crimg`.
+
+**Pendiente**
+- Datos del BIM Manager: medidas de iPhone, Android y tablet; los tres puntos de control.
+- Una incidencia con capturas en la copia de pruebas (referencia del CA-09).
+- Tareas de Revit aparte: reducir los PDF de más de 30 MB; contar `_eliminadas` como publicado.
+- El encabezado de `lecciones.md` sigue citando «v0.23 · servidor v0.17». No se ha cambiado.
+
+**Siguiente: parada 8 (abogado del diablo)**
+
 ## Parada 5 · Entrevista sobre la spec (`v2-p5`, 27/11/2026)
 
 **Hecho**
