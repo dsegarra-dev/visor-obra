@@ -4,6 +4,55 @@
 
 Estado al cerrar cada parada. Lo último va arriba.
 
+## Parada 8, segunda parte · Puntos ROJO y NARANJA en la spec (`v2-p8.1`, 27/11/2026)
+
+**Hecho**
+- Spec y `AGENTS.md`: aplicados los 6 ROJO y los 15 NARANJA del informe; ningún AMARILLO.
+- **Decisiones del BIM Manager:**
+  - **D-07:** eliminar una lámina la anota en un registro de eliminadas de su publicación, sin mover el PDF. Revit no la vuelve a proponer (comprobado en `script.py:1419-1428`).
+  - **D-01:** recuento de CASO-F con la regla de la v2: 589 láminas y 589 versiones (antes 584).
+  - **D-02:** copia completa de la carpeta del visor y del libro para las pruebas. Cómo crearla, en la spec 8, «Paso previo del plan».
+  - **D-03:** durante el piloto, la v2 escribe en un libro propio; la v1 y la v2 nunca comparten libro.
+  - **D-08:** CASO-P vuelve como caso pequeño. Recuento: 19 láminas × 3 versiones, 1 modelo sin vínculos, 3 publicaciones antiguas. Medido en ordenador.
+  - **D-16:** los números de comunicación llevan el código del proyecto.
+  - **D-20:** el CA-11 falla si la tablet no mejora.
+- **Resto, con el arreglo mínimo del informe:**
+  - columna «Equipo» (editor de Drive ya no es equipo);
+  - lista cerrada de campos a la IA y su registro;
+  - CA-12 sin 3D;
+  - CA-19 con la fecha de las marcas (27/10/2026);
+  - clave del descuento;
+  - lámina eliminada con incidencias;
+  - «Sin situar»;
+  - perder el permiso;
+  - conflictos de la cola;
+  - dictado solo en los móviles del piloto;
+  - contenido del correo;
+  - muestra de comunicaciones para el CA-06;
+  - documento de Google del acta;
+  - archivos procesados comprobados.
+  - CA nuevos: del CA-31 al CA-39.
+- **`casos/`:**
+  - `caso-p.md`;
+  - `caso-f.md` con la regla de la v2;
+  - recuentos y medidas anonimizados en `datos/`;
+  - `contar_paquete.py --eliminadas`;
+  - plantilla de dispositivos con CASO-P.
+- **Lección 11:** dos casos.
+
+**Medidas de CASO-P en ordenador** (27/11/2026, cable)
+- En frío: proyecto 10,6 s; modelo 43,5 s; INC-001 con capturas 2,2 s (referencia para el CA-09).
+- El plano M01 (0,3 s) no vale como referencia. Hipótesis: ya estaba abierto al cargar el proyecto.
+
+**Escrituras en producción**
+- Medir CASO-P con la v1 escribió filas en «Registro» y la lectura de INC-001. Son las escrituras aceptadas el 26/11.
+
+**Pendiente**
+- Paso previo del plan: crear el entorno de pruebas (spec 8).
+- Datos del BIM Manager: medidas de iPhone, Android y tablet (ahora también de CASO-P); los tres puntos de control.
+- Antes del piloto: el dictado en el dispositivo y las condiciones de datos de la API.
+- Repetir la medida de plano de CASO-P con otra lámina (M19).
+
 ## Parada 8 · Abogado del diablo (`v2-p8`, 27/11/2026)
 
 **Hecho**

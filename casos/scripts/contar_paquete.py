@@ -20,10 +20,20 @@
 #   - origen: el de la marca; si no, el del índice; si no, el de la muestra de _LOC.json
 #   - modelo publicado = el manifiesto *_MODELO.json más reciente de cada origen
 #
-# Uso: python -I contar_paquete.py <carpeta casos-raw> <código> <listado1.json> [listado2.json …]
+# Uso: python -I contar_paquete.py [--eliminadas <archivo.json>] <carpeta casos-raw> <código> <listado1.json> [listado2.json …]
+#   --eliminadas: regla de la v2 (spec 4.2); ver el comentario junto al análisis de argumentos.
 import collections, json, os, re, sys
 
-raw, code, listados = sys.argv[1], sys.argv[2], sys.argv[3:]
+args = sys.argv[1:]
+# --eliminadas <archivo.json>: regla de la v2 (spec 4.2). {"<carpeta de publicación>": ["<archivo>", …]}
+# con los archivos de las láminas eliminadas (columna de archivos de «Láminas eliminadas»).
+# Lo eliminado no cuenta como versión y su falta no deja la publicación incompleta.
+eliminadas = {}
+if "--eliminadas" in args:
+    i = args.index("--eliminadas")
+    eliminadas = {k: {n.lower() for n in v} for k, v in json.load(open(args[i + 1], encoding="utf-8")).items()}
+    del args[i:i + 2]
+raw, code, listados = args[0], args[1], args[2:]
 fs = {}
 for p in listados:
     for f in json.load(open(os.path.join(raw, p), encoding="utf-8"))["files"]:
@@ -56,7 +66,9 @@ for pid, files in por_pub.items():
     if marca:
         m = ctl(marca[0]["id"])
         tam = {f["title"]: int(f.get("fileSize", 0)) for f in files}
-        faltan = [e["name"] for e in m.get("files", []) if e["name"] not in tam or (e.get("size") and int(e["size"]) != tam[e["name"]])]
+        quitadas = eliminadas.get(pubs[pid], set())
+        faltan = [e["name"] for e in m.get("files", []) if e["name"].lower() not in quitadas
+                  and (e["name"] not in tam or (e.get("size") and int(e["size"]) != tam[e["name"]]))]
         estado[pid] = "incompleta" if faltan else "completa"
         detalle[pid] = {"lista_marca": len(m.get("files", [])), "faltan": faltan}
         origen = (m.get("source") or {}).get("key")
@@ -91,8 +103,8 @@ for pid in validas:
                 num_de_pdf[(s.get("pdf_file") or "").lower()] = s["sheet"]["number"]
     nombres = {low(f) for f in files}
     for f in files:
-        if low(f).endswith(".pdf"):
-            num = num_de_pdf.get(low(f), re.sub(r"\.pdf$", "", f["title"], flags=re.I))
+        if low(f).endswith(".pdf") and low(f) not in eliminadas.get(pubs[pid], set()):
+            num =num_de_pdf.get(low(f), re.sub(r"\.pdf$", "", f["title"], flags=re.I))
             con_loc = low(f).replace(".pdf", "_loc.json") in nombres
             versiones.append({"pub": pubs[pid], "origen": origen_pub[pid], "numero": num, "loc": con_loc,
                               "en_indice": low(f) in num_de_pdf})
@@ -141,6 +153,7 @@ proyectos_ajenos = sorted({x["proyecto_en_manifiesto"] for x in modelos if x["pr
 
 res = {
     "proyecto": code,
+    "regla_eliminadas": bool(eliminadas),
     "archivos_en_drive": len(fs),
     "publicaciones": dict(collections.Counter(estado.get(p, "antigua") for p in pubs)),
     "publicaciones_validas": len(validas),

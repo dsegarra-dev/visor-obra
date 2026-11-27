@@ -6,7 +6,8 @@ Valores esperados y medidas de la **v1 publicada** (`sw.js` 0.21, servidor v0.16
 
 | Archivo | Qué tiene |
 |---|---|
-| [caso-f.md](caso-f.md) | Único caso de prueba (federación): valores esperados |
+| [caso-f.md](caso-f.md) | Caso grande (federación): valores esperados con la regla de la v1 y con la de la v2 |
+| [caso-p.md](caso-p.md) | Caso pequeño (versiones, modelo único, publicaciones antiguas): valores esperados |
 | [medidas-ordenador.md](medidas-ordenador.md) | Tiempos de la v1 en ordenador, medidos con Playwright |
 | [medidas-dispositivos.md](medidas-dispositivos.md) | Plantilla para que el BIM Manager anote iPhone, Android y tablet |
 | `datos/` | Salida del recuento (`*_recuento.json`) |
@@ -17,7 +18,7 @@ Valores esperados y medidas de la **v1 publicada** (`sw.js` 0.21, servidor v0.16
 ## Datos anonimizados
 
 El repositorio es público (`AGENTS.md`). Por eso aquí solo hay alias, nunca datos reales de obra, personas o clientes:
-- `CASO-F` es el caso de federación y `CASO-P`, el pequeño que se descartó. `PROY-X` es otro proyecto.
+- `CASO-F` es el caso de federación y `CASO-P`, el pequeño. `PROY-X` es otro proyecto.
 - `ORIGEN-A` y `ORIGEN-B` son los archivos de Revit de origen, y `VINC-…`, sus vínculos.
 - `<carpeta-…>`, `<usuario>` y `<cuenta…>` sustituyen IDs de Drive, rutas, usuarios de Windows y correos.
 - En `datos/medidas_ordenador_caso-f.jsonl` se ha quitado la lista de IFC del panel «Paquete».
@@ -29,9 +30,18 @@ Antes de cada push:
 python -I casos/scripts/anonimizar.py comprobar .scratchpad/privado/alias.json main..v2
 ```
 
-## Por qué solo CASO-F
+## Por qué dos casos
 
-CASO-P se descartó el 26/11/2026 (decisión del BIM Manager). La carpeta del visor asignada a CASO-P solo contiene publicaciones del archivo de Revit `PROY-X-PE`: sus manifiestos e índices dicen proyecto PROY-X. No servía como caso de CASO-P. Las pruebas se hacen solo con CASO-F.
+- **26/11/2026.** CASO-P se descartó (decisión del BIM Manager). La carpeta del visor asignada a CASO-P solo contiene publicaciones del archivo de Revit `PROY-X-PE`: sus manifiestos e índices dicen proyecto PROY-X. No servía como caso de CASO-P.
+- **27/11/2026.** Se recupera como **caso pequeño** (decisión del BIM Manager, punto D-08 del abogado del diablo).
+  - CASO-F no tiene ninguna lámina con más de una versión ni ningún modelo único.
+  - CASO-P sí: 19 láminas con 3 versiones cada una y un solo modelo sin vínculos.
+  - Lo que se prueba es el visor, así que el contenido ajeno no importa.
+- Cada paso se prueba con los dos.
+
+## Copia de pruebas
+
+Cada caso se prueba sobre una copia completa de su carpeta del visor y de su libro (spec 5.0). Cómo se crea: spec, apartado 8, «Paso previo del plan». La copia vale si `contar_paquete.py` da sobre ella lo mismo que sobre el original.
 
 ## Cómo se han sacado los valores esperados
 
@@ -45,6 +55,7 @@ Ningún valor sale del código del visor. Todos salen de Drive y de los libros d
    - En marcas e índices, la fecha `generated` coincide con la de su carpeta en los 65 casos comprobables.
 3. **Recuento.** `scripts/contar_paquete.py` aplica las reglas del contrato de publicación (ver la cabecera del script y `docs/como-se-hace-hoy.md`, apartado 3).
    - Una publicación es válida si está completa (todo lo que lista su marca está, con el mismo tamaño) o si es antigua (sin marca ni señal).
+   - Con `--eliminadas <archivo.json>` aplica la regla de la v2 (spec 4.2): los archivos de láminas eliminadas se descuentan, no dejan la publicación incompleta y no cuentan como versión. Para CASO-F: `datos/caso-f_eliminadas.json`.
    - Versión = un PDF en una publicación válida. Lámina = par (modelo de origen, número). Modelo publicado = el manifiesto más reciente de cada origen.
    - Las publicaciones antiguas sin `source` toman el origen del campo `file` del índice o manifiesto, quitando el usuario de Windows del final. Se marcan como «deducido del nombre».
 4. **Comunicaciones.** Lectura con el conector de Google Sheets del libro central de producción, `<código>_Libro_comunicaciones`, en `<carpeta del visor en la unidad compartida> › COMUNICACIONES › <código> · <nombre>`:
@@ -53,7 +64,7 @@ Ningún valor sale del código del visor. Todos salen de Drive y de los libros d
    - pestaña «Láminas eliminadas».
    Solo lectura: no se escribió nada.
 
-Fecha de los listados y lecturas: 26/11/2026.
+Fecha de los listados y lecturas: 26/11/2026. CASO-P se volvió a listar el 27/11/2026, en dos partes (PDF y el resto), y no había cambiado. El recuento con la regla de la v2 es del 27/11/2026.
 
 ### Para repetirlo
 
@@ -61,7 +72,10 @@ Los listados y descargas quedan en `.scratchpad/casos-raw/`, fuera de git. Con e
 
 ```
 python -I casos/scripts/contar_paquete.py .scratchpad/casos-raw CASO-F caso-f_otros.json caso-f_pdf_antes1027.json caso-f_pdf_desde1027.json caso-f_json_antes1027.json caso-f_json_desde1027.json
+python -I casos/scripts/contar_paquete.py --eliminadas casos/datos/caso-f_eliminadas.json .scratchpad/casos-raw CASO-F (mismos listados)
+python -I casos/scripts/contar_paquete.py .scratchpad/casos-raw CASO-P caso-p_listado.json
 ```
+Los listados en `.scratchpad/casos-raw/` llevan el código real en el nombre, que está en la tabla de alias.
 
 ## Cómo se mide en ordenador
 
@@ -95,7 +109,7 @@ Por eso `medir_v1.js` espera 11 minutos desde el inicio de la repetición anteri
 
 Decisión del BIM Manager del 26/11/2026. La v1 publicada solo tiene el servidor de producción, así que medirla con su cuenta escribe en producción:
 1. filas en la pestaña «Registro» de la hoja de proyectos (accesos, aperturas, descargas), igual que el uso diario;
-2. ~~la lectura del BIM Manager en INC-001 de CASO-P~~: no aplica, CASO-P se descartó antes de medir;
+2. la lectura del BIM Manager en INC-001 de CASO-P, al medir el 27/11/2026;
 3. los `.crgeo` de los dos vínculos de CASO-F que no tenían versión procesada (`VINC-B18`, `VINC-B2`), que la v1 sube a `_visor_procesado` al cargar el modelo con rol equipo. Por eso la primera carga en frío de CASO-F incluye procesar esos dos IFC y las siguientes no.
 
 ## Entornos de comunicaciones

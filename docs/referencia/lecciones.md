@@ -19,7 +19,7 @@
 
 ## Del taller BBTS26 que aplican aquí
 
-11. **Probar cada paso con el caso de prueba desde el principio** (CASO-F, el grande), no dejarlo para el final. Es lo que más tiempo ahorró en los ensayos. CASO-P se descartó el 26/11/2026: su carpeta solo contenía el PROY-X-PE.
+11. **Probar cada paso con los casos de prueba desde el principio** (CASO-F, el grande, y CASO-P, el pequeño), no dejarlo para el final. Es lo que más tiempo ahorró en los ensayos. CASO-P se descartó el 26/11/2026 y se recuperó el 27/11/2026: el caso grande solo no prueba versiones ni un modelo único.
 12. **Medir pronto con el caso grande** (la federación de CASO-F) para elegir la estrategia de carga.
 13. **Cuando un criterio no se cumple, el fallo se deja visible.** No se mueve la tolerancia hasta que pase.
 14. **Los valores esperados salen de una fuente independiente**, nunca del código que se prueba, y se calculan con todos los decimales.

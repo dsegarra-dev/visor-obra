@@ -25,6 +25,24 @@ Carpeta del visor: `<carpeta-visor-CASO-F>`. Datos de Drive a 26/11/2026. Métod
 | Descarga de `.crgeo` de los dos modelos | ≈ 231 MB | Suma de tamaños en el listado |
 | Tamaño de los PDF | Mediana 1,7 MB; máximo 260 MB (`CO01-01.pdf`); otros dos de 217 y 197 MB (`PGN 01`, `PGN 02`) | Listado de Drive |
 
+Las cifras de arriba aplican la regla de la v1: una publicación a la que le falta un archivo de su marca es incompleta y no cuenta.
+
+### Valores esperados para la v2 (regla de la spec 4.2, CA-04)
+
+Lo eliminado se descuenta y no invalida su publicación. Recuento del 27/11/2026, con `contar_paquete.py --eliminadas datos/caso-f_eliminadas.json` sobre los mismos listados. Salida en `datos/caso-f_recuento_regla_v2.json`.
+
+| Valor | Regla v1 | Regla v2 |
+|---|---|---|
+| Publicaciones | 32 completas, 1 incompleta, 2 antiguas, 7 en curso | 33 completas, 0 incompletas, 2 antiguas, 7 en curso |
+| Publicaciones válidas | 34 | 35 |
+| Láminas | 584 (216 + 368) | **589** (221 de `ORIGEN-A` + 368 de `ORIGEN-B`) |
+| Versiones | 584 | **589** |
+| Láminas con varias versiones | 0 | 0 |
+| Modelos | 2: 38 vínculos, 257 copias | 2: 38 vínculos, 257 copias |
+
+- La diferencia son las 5 láminas de la publicación 20261028_1242 (CO01-02 a CO01-06). Con la regla de la v2 se vuelven a ver.
+- Archivos eliminados que se descuentan: `00.pdf` y `00_LOC.json` de 20261028_1242. Salen de la columna de archivos de «Láminas eliminadas» del libro de producción, no de la columna «Lámina».
+
 ### Publicación incompleta: 20261028_1242
 
 - Su marca lista 13 archivos y faltan `00.pdf` y `00_LOC.json`.
@@ -34,7 +52,7 @@ Carpeta del visor: `<carpeta-visor-CASO-F>`. Datos de Drive a 26/11/2026. Métod
   - no se ve ninguna de las 6 (00, CO01-02, CO01-03, CO01-04, CO01-05, CO01-06), ni entre las vigentes ni con «Ver revisiones superadas»;
   - al buscar «CO01-0» solo salen CO01-01, CO01-07, CO01-08 y CO01-09;
   - el panel «Paquete» dice «Láminas 584» y «Publicaciones 31 (+8 sin completar)». Coincide con el recuento: 584 láminas; 34 publicaciones válidas menos 3 que solo traen modelo = 31; 7 en curso + 1 incompleta = 8.
-- No se arregla en la v1: El BIM Manager lo resuelve desde Revit. En la v2 es el requisito CA-21.
+- No se arregla en la v1: El BIM Manager lo resuelve desde Revit. En la v2 es el requisito CA-21: eliminar anota la lámina en un registro de la publicación, sin mover el PDF (spec 4.2).
 
 ## Comunicaciones (libro central de producción)
 

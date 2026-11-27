@@ -1,6 +1,8 @@
-# Medidas en ordenador · v1 publicada · CASO-F
+# Medidas en ordenador · v1 publicada · CASO-F y CASO-P
 
 [BORRADOR IA — EN REVISIÓN]
+
+**CASO-P** (27/11/2026) está en su apartado, al final.
 
 Tiempos de la v1 publicada (`sw.js` 0.21, servidor v0.16) con CASO-F, medidos con Playwright el 26/11/2026. Son las cifras que la v2 no puede empeorar (CA-11). Método y definición de cada tiempo en [README.md](README.md) y en la cabecera de `scripts/medir_v1.js`.
 
@@ -81,3 +83,52 @@ Sus tiempos internos van en la misma línea que los medidos, por ejemplo «Model
 
 - **El modelo en frío (~9,6 min) es lo que más pesa.** Hipótesis: descargar ≈ 231 MB de `.crgeo` a través de Apps Script, en trozos de 8 MB codificados en base64. Se comprueba midiendo la descarga de un `.crgeo` grande directamente desde Drive y comparándola con la del visor.
 - **Abrir un plano en frío (~12 s)** incluye descargar el PDF por el servidor y dibujarlo; el panel de la v1 da «preparar 8,5–10,5 s · dibujar 1,9 s». Se comprueba igual, con la descarga directa del PDF.
+
+---
+
+## CASO-P (caso pequeño)
+
+### Condiciones
+
+| Campo | Valor |
+|---|---|
+| Fecha y horas | 27/11/2026, de 10:13 a 11:20 (hora de Madrid) |
+| Dispositivo | El mismo de CASO-F: ordenador del BIM Manager (Windows 11 Pro), Edge 158, ventana de 1440 × 900 |
+| Red | Cable del despacho. Edge la estimaba como «4g», 1,3 Mb/s y 100 ms (estimación del navegador, no medida) |
+| Cuenta y rol | BIM Manager, rol «Equipo CEL-RAS» |
+| Lámina | M01 |
+| Comunicación | INC-001: incidencia con 2 capturas (plano y modelo) |
+| Modelo | 1 modelo sin vínculos, 3397 elementos; versión procesada de 55 MB ya en Drive (no hubo que procesar nada) |
+| Script | `scripts/medir_v1.js`, el mismo que en CASO-F, con 11 min entre repeticiones |
+
+### Resumen
+
+| Acción | Frío: mediana (mín–máx) | n | Caliente: mediana (mín–máx) | n |
+|---|---|---|---|---|
+| Entrar con Google (automática) | 6,9 s (6,9–9,1) | 3 | 4,5 s (4,3–4,6) | 3 |
+| Abrir proyecto | 10,6 s (10,1–14,2) | 3 | < 0,1 s | 3 |
+| Abrir plano M01 | 0,3 s (0,3–0,4) | 3 | 0,3 s (0,2–0,3) | 3 |
+| Cargar modelo | 43,5 s (39,8–45,7) | 3 | < 0,1 s | 3 |
+| Abrir INC-001 (con capturas) | **2,2 s (2,1–4,0)** | 3 | 0,1 s (0,1–0,1) | 3 |
+
+- Las 6 repeticiones entraron con Google sin fallos.
+- **Abrir INC-001** es la referencia de la v1 para el CA-09: es la primera incidencia medida que tiene capturas.
+- **Abrir plano M01 en frío (0,3 s) no sirve como referencia.**
+  - **Hipótesis:** M01 es la primera lámina y la v1 ya la había abierto o precargado al abrir el proyecto, así que no se mide su descarga.
+  - Se comprueba repitiendo la medida con una lámina del final de la lista (por ejemplo, M19) o leyendo en `index.html` si la v1 abre una lámina al cargar el proyecto.
+- Datos en bruto: `datos/medidas_ordenador_caso-p.jsonl`.
+
+### Todas las repeticiones
+
+Tiempos en segundos.
+
+| Tanda | Rep. | Hora de inicio | Entrar | Abrir proyecto | Abrir plano | Cargar modelo | Abrir INC-001 |
+|---|---|---|---|---|---|---|---|
+| Frío | 1 | 10:13:49 | 9,1 | 10,1 | 0,3 | 39,8 | 4,0 |
+| Frío | 2 | 10:24:49 | 6,9 | 14,2 | 0,3 | 45,7 | 2,2 |
+| Frío | 3 | 10:35:49 | 6,9 | 10,6 | 0,4 | 43,5 | 2,1 |
+| Caliente | 1 | 10:47:42 | 4,3 | < 0,1 | 0,2 | < 0,1 | 0,1 |
+| Caliente | 2 | 10:58:42 | 4,6 | < 0,1 | 0,3 | < 0,1 | 0,1 |
+| Caliente | 3 | 11:09:42 | 4,5 | < 0,1 | 0,3 | < 0,1 | 0,1 |
+
+- **Modelo en frío:** el texto de progreso de la v1 dice «versión procesada 55 MB · 31,7–36 s». No se usa como medida, porque sale del código que se mide.

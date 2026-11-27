@@ -1,0 +1,55 @@
+{
+ "proyecto": "CASO-F",
+ "regla_eliminadas": true,
+ "archivos_en_drive": 1442,
+ "publicaciones": {
+  "completa": 33,
+  "en curso": 7,
+  "antigua": 2
+ },
+ "publicaciones_validas": 35,
+ "detalle_incompletas": {},
+ "origenes": {
+  "ORIGEN-A": 31,
+  "ORIGEN-B (deducido del nombre)": 4
+ },
+ "laminas": 589,
+ "versiones": 589,
+ "laminas_con_varias_versiones": 0,
+ "versiones_sin_loc": 0,
+ "pdf_fuera_del_indice": 328,
+ "en_indice_sin_pdf": 1,
+ "laminas_por_origen": {
+  "ORIGEN-A": 221,
+  "ORIGEN-B (deducido del nombre)": 368
+ },
+ "modelos_publicados": 2,
+ "modelos": [
+  {
+   "origen": "ORIGEN-A",
+   "publicacion": "20261105_1409_VisorObra",
+   "generado": "2026-11-05T14:11:56.603000",
+   "proyecto_en_manifiesto": "CASO-F",
+   "anfitrion": false,
+   "vinculos": 17,
+   "copias_de_vinculos": 114,
+   "ifc_en_manifiesto": 17,
+   "ifc_que_faltan": []
+  },
+  {
+   "origen": "ORIGEN-B (deducido del nombre)",
+   "publicacion": "20261028_0900_VisorObra",
+   "generado": "2026-10-28T09:13:38.281000",
+   "proyecto_en_manifiesto": "CASO-F",
+   "anfitrion": false,
+   "vinculos": 21,
+   "copias_de_vinculos": 143,
+   "ifc_en_manifiesto": 21,
+   "ifc_que_faltan": []
+  }
+ ],
+ "manifiestos_de_otro_proyecto": [],
+ "ifc_en_drive": 87,
+ "ifc_gb": 4.73,
+ "crgeo_en_drive": 38
+}

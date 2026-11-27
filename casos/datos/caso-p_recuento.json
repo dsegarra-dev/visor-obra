@@ -1,0 +1,42 @@
+{
+ "proyecto": "CASO-P",
+ "regla_eliminadas": false,
+ "archivos_en_drive": 144,
+ "publicaciones": {
+  "antigua": 3
+ },
+ "publicaciones_validas": 3,
+ "detalle_incompletas": {},
+ "origenes": {
+  "PROY-X-PE (deducido del nombre)": 3
+ },
+ "laminas": 19,
+ "versiones": 57,
+ "laminas_con_varias_versiones": 19,
+ "versiones_sin_loc": 0,
+ "pdf_fuera_del_indice": 19,
+ "en_indice_sin_pdf": 19,
+ "laminas_por_origen": {
+  "PROY-X-PE (deducido del nombre)": 19
+ },
+ "modelos_publicados": 1,
+ "modelos": [
+  {
+   "origen": "PROY-X-PE (deducido del nombre)",
+   "publicacion": "20261021_1136_VisorObra",
+   "generado": "2026-10-21T11:45:01.296000",
+   "proyecto_en_manifiesto": "PROY-X",
+   "anfitrion": false,
+   "vinculos": 0,
+   "copias_de_vinculos": 0,
+   "ifc_en_manifiesto": 1,
+   "ifc_que_faltan": []
+  }
+ ],
+ "manifiestos_de_otro_proyecto": [
+  "PROY-X"
+ ],
+ "ifc_en_drive": 4,
+ "ifc_gb": 0.96,
+ "crgeo_en_drive": 4
+}

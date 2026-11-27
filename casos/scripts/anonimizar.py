@@ -87,6 +87,8 @@ for sha, (c, ruta) in blobs.items():
                 continue
             if p is ID_DRIVE and any(a <= m.start() < b for a, b in urls):
                 continue
+            if p is ID_DRIVE and not re.search(r"\d", m.group(0)):
+                continue   # sin ningún dígito: es una palabra o un nombre de archivo, no un ID de Drive
             linea = texto.count("\n", 0, m.start()) + 1
             print(f"{c} {ruta}:{linea}: {m.group(0)[:80]}"); hallazgos += 1
 print("hallazgos:", hallazgos)
