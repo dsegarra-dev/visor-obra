@@ -55,6 +55,7 @@ Reglas del proyecto. Claude Code las lee al empezar cada sesión a través de `C
 - Mientras la app de Google esté en modo prueba, solo entran cuentas del despacho. Los permisos externos se prueban con cuentas internas de pruebas con el nivel de Drive que toque.
 - Pantallas: ordenador, tablet y móvil.
   - En móvil no se carga nunca el modelo 3D, tampoco con «versión completa».
+  - Si la tablet falla el CA-11, usa el modo ligero: sin modelo 3D, y con planos solo si se cumple el CA-22.
   - Los planos en el móvil solo entran si el prototipo de teselas cumple el CA-22; hasta entonces, tampoco se cargan.
 - Todo botón de la interfaz se prueba haciendo clic en un navegador real con Playwright, en tamaño escritorio y en tamaño móvil. Una función de la interfaz no está hecha hasta que esa prueba pasa.
 - Los tiempos se miden, no se estiman. Cada medida indica dispositivo, red y hora.

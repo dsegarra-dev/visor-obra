@@ -4,6 +4,17 @@
 
 Estado al cerrar cada parada. Lo último va arriba.
 
+## Spec aprobada (`v2-spec`, 27/11/2026)
+
+- El BIM Manager aprueba `CR_ESP_VisorObra_PO_v2.0.md`. Sin etiqueta de borrador y con `[REVISADO POR: BIM Manager, 2026-11-27]`.
+  - En git va el cargo, no el nombre, porque el repositorio es público.
+  - La copia con el nombre del revisor está fuera de git: `.scratchpad/privado/` y la carpeta privada de pruebas de Drive.
+- Decisiones de la aprobación:
+  - DF externa como comentarista: sí;
+  - si la tablet falla el CA-11, usa el modo ligero, sin 3D y con planos solo si se cumple el CA-22 (spec 3.3 y `AGENTS.md`).
+
+**Siguiente:** paso previo del plan (entorno de pruebas, spec 8) y parada 11 (ADR y plan de construcción).
+
 ## Parada 8, segunda parte · Puntos ROJO y NARANJA en la spec (`v2-p8.1`, 27/11/2026)
 
 **Hecho**

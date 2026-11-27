@@ -1,14 +1,12 @@
 # CR_ESP_VisorObra_PO_v2.0 · Especificación del visor de obra v2
 
-[BORRADOR IA — EN REVISIÓN]
-
 | Campo | Valor |
 |---|---|
 | Documento | Especificación funcional del visor de obra CEL-RAS, versión 2 |
 | Fase | PO (Proyecto en fase de Obra) |
 | Responsable | BIM Manager |
-| Estado | Cerrada en la parada 7 (27/11/2026) con [docs/entrevista.md](../entrevista.md) y las medidas de `casos/`. Revisada el 27/11/2026 con los puntos ROJO y NARANJA del abogado del diablo (parada 8). Pendiente de aprobación |
-| Revisión | [REVISADO POR: Nombre, YYYY-MM-DD] |
+| Estado | Cerrada en la parada 7 (27/11/2026) con [docs/entrevista.md](../entrevista.md) y las medidas de `casos/`. Revisada el 27/11/2026 con los puntos ROJO y NARANJA del abogado del diablo (parada 8). **Aprobada** por el BIM Manager el 27/11/2026 |
+| Revisión | [REVISADO POR: BIM Manager, 2026-11-27] |
 
 ## TL;DR
 
@@ -20,7 +18,7 @@ La v2 se rehace con método, sin cambiar lo que ya va bien:
 - **Mismos permisos, más control.** Cada persona ve las obras que el jefe de proyecto le ha compartido. Solo las personas que el jefe de proyecto apunta como equipo pueden dar órdenes y validar.
 - **Avisos.** Las órdenes y las incidencias urgentes llegan por correo al momento. El resto, en un resumen diario. Los correos no llevan el contenido, solo el aviso y el enlace.
 - **Móvil ligero.** En el móvil se ven las comunicaciones y sus imágenes. Los planos solo llegarán al móvil si una prueba demuestra que se abren en menos de 3 segundos. El modelo 3D, nunca.
-- **Tablet y ordenador completos.**
+- **Tablet y ordenador completos.** Si en la tablet la v2 no va más rápida que la v1, la tablet funciona como el móvil.
 - **Voz con IA.** El técnico dicta en obra con el teclado del móvil. La IA propone crear, cambiar o cerrar incidencias y redacta el acta de la visita. Nada se guarda hasta que el técnico lo valida.
 - **Piloto interno y separado.** Primero se prueba solo con gente del despacho, con copias de las obras y con sus comunicaciones aparte de las de la v1.
 
@@ -151,8 +149,8 @@ Un enlace público («cualquiera con el enlace») no da acceso.
 
 | | Ordenador | Tablet | Móvil |
 |---|---|---|---|
-| Planos | Sí | Sí (CA-11) | No, salvo que el prototipo pase el CA-22 |
-| Modelo 3D | Sí | Sí (CA-11) | No, nunca |
+| Planos | Sí | Sí. Si falla el CA-11, solo si se cumple el CA-22 | No, salvo que el prototipo pase el CA-22 |
+| Modelo 3D | Sí | Sí. Si falla el CA-11, no | No, nunca |
 | Comunicaciones | Sí | Sí | Sí |
 | Imagen del plano de cada incidencia | Sí | Sí | Sí, recorte PNG |
 | Imagen del modelo de cada incidencia | Sí | Sí | Sí, captura PNG |
@@ -174,7 +172,10 @@ Un enlace público («cualquiera con el enlace») no da acceso.
   - Los comentarios de la cola siempre se añaden al hilo.
   - Un cambio de estado de la cola solo se aplica si el estado no ha cambiado desde que se guardó en el dispositivo. Si ha cambiado, entra como comentario y se avisa a quien lo hizo.
   - Las notas llevan la hora en que se escribieron o dictaron y la visita a la que pertenecen, aunque se envíen otro día.
-- **Si la tablet falla el CA-11:** el BIM Manager decide entre pasarla a modo ligero o seguir optimizando. El criterio no se da por cumplido en ningún caso.
+- **Si la tablet falla el CA-11:** la tablet usa el modo ligero, como el móvil:
+  - sin modelo 3D;
+  - con planos solo si se cumple el CA-22.
+  - El CA-11 sigue contando como fallado: no se da por cumplido en ningún caso.
 
 ### 3.4 Voz → propuestas → validación
 
