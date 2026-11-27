@@ -4,6 +4,29 @@
 
 Estado al cerrar cada parada. Lo último va arriba.
 
+## Parada 4 · REA (`v2-p4`, 27/11/2026)
+
+**Hecho**
+- `docs/rea-visor-obra.md`, con la tabla fuente · idea · ¿la adoptamos? · cómo:
+  - parte A: Aelion, Dalux Field, Revizto y Autodesk Viewer;
+  - parte B: qué se conserva de la v1 (servidor y visor) y qué se reescribe.
+- Solo documentación pública, reescrita con nuestras palabras. Sin código.
+
+**Límites**
+- Los centros de ayuda de Dalux y Revizto bloquean la lectura automática (403). Lo que se sabe sale de extractos del buscador y de las fichas de App Store.
+- De Aelion solo hay una fuente secundaria. No consta que valide antes de guardar.
+
+**Abierto para la parada 5**
+- Seis preguntas al final de `docs/rea-visor-obra.md`:
+  1. avisos de vencidas;
+  2. devolver una respuesta;
+  3. incidencias desde el móvil sin plano;
+  4. plantillas;
+  5. eliminar sin papelera;
+  6. `.crimg` en tablet.
+
+**Siguiente: parada 5 (entrevista sobre la spec)**
+
 ## Parada 3 · Casos de prueba y medidas de la v1 (`v2-p3`, 26/11/2026)
 
 **Hecho**

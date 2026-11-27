@@ -34,12 +34,16 @@ if modo == "aplicar":
 # comprobar
 rango = sys.argv[3]
 literales = [s["real"] for s in SUST if not s.get("regex")] + tabla.get("comprobar_tambien", [])
+ID_DRIVE = re.compile(r"\b[0-9A-Za-z_-]{28,44}\b(?<![a-z_]{28})")
 patrones = [re.compile(re.escape(x), re.I) for x in literales] + [
     re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]{2,}"),          # correos
-    re.compile(r"\b[0-9A-Za-z_-]{28,44}\b(?<![a-z_]{28})"),               # IDs de Drive / claves
+    ID_DRIVE,                                                              # IDs de Drive / claves
     re.compile(r"\b[A-Za-z]:\\(?!Program Files)"),                        # rutas de Windows
     re.compile(r"apps\.googleusercontent\.com|script\.google\.com/macros/s/|AIza[0-9A-Za-z_-]{20,}"),
 ]
+# Un ID dentro de la URL de una web pública (fuentes citadas) no es un dato del despacho.
+# Sí cuenta dentro de URL de Google (Drive, Docs, Apps Script).
+URL_PUBLICA = re.compile(r"https?://(?!(?:drive|docs|script)\.google\.com)[^\s)\]>\"']+")
 
 
 def git(*a):
@@ -76,9 +80,12 @@ for sha, (c, ruta) in blobs.items():
         texto = git("cat-file", "-p", sha)
     except Exception:
         continue
+    urls = [u.span() for u in URL_PUBLICA.finditer(texto)]
     for p in patrones:
         for m in p.finditer(texto):
             if permitido(m.group(0)):
+                continue
+            if p is ID_DRIVE and any(a <= m.start() < b for a, b in urls):
                 continue
             linea = texto.count("\n", 0, m.start()) + 1
             print(f"{c} {ruta}:{linea}: {m.group(0)[:80]}"); hallazgos += 1
