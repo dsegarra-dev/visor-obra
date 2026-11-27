@@ -4,6 +4,17 @@
 
 Estado al cerrar cada parada. Lo último va arriba.
 
+## Parada 8 · Abogado del diablo (`v2-p8`, 27/11/2026)
+
+**Hecho**
+- Un subagente que no escribió la spec la ha revisado. Informe en `.scratchpad/p8_abogado_del_diablo.md` (fuera de git).
+- Resultado: 30 puntos (6 ROJO, 15 NARANJA, 9 AMARILLO), cada uno con un ejemplo de fallo y el arreglo mínimo.
+- Comprobados en sus fuentes: D-01 (584 frente a 589 láminas), D-03 (numeración COM repetida si conviven dos servidores), D-06 (CA-12 frente a «nunca 3D en el móvil») y D-10 (columna J de «Láminas eliminadas»).
+- La spec no se ha cambiado.
+
+**Siguiente**
+- El BIM Manager elige qué puntos entran en la spec: «Añade o cambia en la spec los puntos {números}».
+
 ## Parada 7 · Cerrar la spec (`v2-p7`, 27/11/2026)
 
 **Hecho**
